@@ -1,7 +1,9 @@
 package com.riskident
 
-import com.riskident.dbzio.DBZIO.HasDb
+import slick.jdbc.JdbcBackend.Database
+import zio.Has
 
 package object dbzio {
+  type HasDb = Has[Database]
   type DBAction[T] = DBZIO[HasDb, T]
 }

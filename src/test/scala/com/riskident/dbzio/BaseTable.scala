@@ -2,7 +2,7 @@ package com.riskident.dbzio
 
 
 import slick.ast._
-import slick.jdbc.PostgresProfile.api._
+import slick.jdbc.H2Profile.api._
 import slick.lifted.{Index, ProvenShape, RepShape}
 import slick.util.ConstArray
 

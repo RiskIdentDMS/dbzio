@@ -1,102 +1,109 @@
 package com.riskident.dbzio
 
-import com.riskident.dbzio.DBZIO.HasDb
 import com.typesafe.config.ConfigFactory
-import slick.dbio.DBIO
-import slick.jdbc.JdbcDataSource
-import slick.jdbc.PostgresProfile.api.{Database => Db, _}
-import zio._
+import slick.jdbc.H2Profile.api.{Database => _, _}
+import slick.jdbc.JdbcBackend.{Database => Db}
+import slick.lifted.Tag
+import zio.{Tag => _, _}
 import zio.console.{Console, putStrLnErr}
 import zio.test.TestFailure
-
-import java.sql.Connection
+import zio.test.environment.TestEnvironment
 
 object DBTestUtils {
-  object TestDb {
-    val databaseName        = "fm-test"
-    val user                = "fraudmanager"
-    val password            = "officer"
-    val serverName          = "localhost"
-    val dataSourceClassName = "org.postgresql.ds.PGSimpleDataSource"
-  }
-  class HikariCPJdbcDataSource(val ds: com.zaxxer.hikari.HikariDataSource, val hconf: com.zaxxer.hikari.HikariConfig)
-    extends JdbcDataSource {
-    def createConnection(): Connection = ds.getConnection()
-    def close(): Unit                  = ds.close()
 
-    override val maxConnections: Option[Int] = Some(200)
+  case class Data(id: Int, name: String)
+
+  class DataTable(tag: Tag) extends BaseTable[Data](tag, "data") {
+    def id = column[Int]("id", O.PrimaryKey, O.AutoInc)
+
+    def name = column[String]("name", O.SqlType("varchar"))
+
+    override def * = (id, name) <> ((Data.apply _).tupled, Data.unapply)
+
+    def nameIndex = indexWithDefaultName(name, unique = true)
   }
 
-  /**
-   * Executes [[DBIO]] in a naive way. We don't want [[DBZIO]] here, since this is what we're testing.
-   */
-  def execDBIO[T](dbio: DBIO[T]): RIO[Db, T] = ZIO.accessM[Db] { db => ZIO.fromFuture(_ => db.run(dbio)) }
+  object DataDaoZio extends BaseTableQuery[Data, DataTable](new DataTable(_)) {
 
-  private val createDb: String => RIO[Db, Boolean] = name => {
-    val test: RIO[Db, Boolean] = {
-      val sql = sql"""SELECT COUNT(*) > 0 as f FROM pg_database WHERE datname = '#$name'"""
-      execDBIO(sql.as[Boolean].head)
-    }
-
-    val create: RIO[Db, Any] = {
-      val sql = sqlu"""CREATE DATABASE #$name"""
-      execDBIO(sql)
-    }
-    for {
-      exists <- test
-      _      <- create.unless(exists)
-    } yield !exists
-  }
-
-  val defaultDbConfig = s"""
-                           |db = {
-                           |  connectionPool = "HikariCP"
-                           |  dataSourceClass = "org.postgresql.ds.PGSimpleDataSource"
-                           |  properties {
-                           |    serverName = "${TestDb.serverName}"
-                           |    user = "${TestDb.user}"
-                           |    password = "${TestDb.password}"
-                           |    databaseName = "${TestDb.databaseName}"
-                           |    portNumber = "5432"
-                           |  }
-                           |  maximumPoolSize = 1
-                           |  numThreads = 1
-                           |  connectionTimeout = 10s
-                           |}
-                           |""".stripMargin
-  val testDb: (String, String) => RManaged[Console, Db] = (name, configStr) => {
-
-    val res: RManaged[Console, (Db, Boolean)] = ZManaged.make {
+    def doInsert(data: Data): DBZIO[Any, Data] = DBZIO { implicit ex =>
       for {
-        config <- ZIO.effect(
-          ConfigFactory
-            .parseString(configStr)
-            .resolve()
-        )
-        db      <- ZIO.effect(Db.forConfig(path = "db", config = config, classLoader = DBTestUtils.getClass.getClassLoader))
-        created <- createDb(name).provide(db)
-
-      } yield (db, created)
-    } {
-      case (db, true) =>
-        val zio = for {
-          _ <- execDBIO(sqlu"DROP DATABASE #$name")
-            .provide(db)
-            .catchAll { t => putStrLnErr(s"Failed to drop database $name due to: $t") }
-          _ <- ZIO.effect(db.close()).catchAll { t => putStrLnErr(s"Failed to close connections due to: $t") }
-        } yield ()
-        zio.ignore
-      case (db, false) =>
-        ZIO
-          .effect(db.close())
-          .catchAll { t => putStrLnErr(s"Failed to close connections due to: $t") }
-          .ignore
+        id <- this.returning(this.map(_.id)).+=(data)
+      } yield data.copy(id = id)
     }
-    res.map(_._1)
+
+    def loadById(id: Int): DBZIO[HasDb, Data] = DBZIO { implicit ex => this.filter(_.id === id).take(1).result.head }
+
+    def delete(id: Int): DBZIO[Any, Int] = DBZIO {
+      this.filter(_.id === id).delete
+    }
+
+    val load: DBZIO[Any, Seq[Data]] = DBZIO {
+      this.result
+    }
+
   }
 
-  val dbLayer: RLayer[Console, HasDb]                         = ZLayer.fromManaged(testDb(TestDb.databaseName, defaultDbConfig))
-  val testDbLayer: ZLayer[Console, TestFailure[Throwable], HasDb] = dbLayer.mapError(TestFailure.fail)
+  class FailedTable(tag: Tag) extends BaseTable[Data](tag, "fail") {
+    def id = column[Int]("id", O.PrimaryKey, O.AutoInc)
 
+    def name = column[String]("name", O.SqlType("varchar"))
+
+    override def * = (id, name) <> ((Data.apply _).tupled, Data.unapply)
+
+    def nameIndex = indexWithDefaultName(name, unique = true)
+  }
+
+  object FailedDaoZio extends BaseTableQuery[Data, FailedTable](new FailedTable(_)) {
+    def doInsert(data: Data): DBZIO[Any, Data] = DBZIO { implicit ex =>
+      for {
+        id <- this.returning(this.map(_.id)).+=(data)
+      } yield data.copy(id = id)
+    }
+
+  }
+
+  val defaultDbConfig =
+    s"""
+       |db = {
+       |  connectionPool = "HikariCP"
+       |  jdbcUrl = "jdbc:h2:mem:"
+       |  maximumPoolSize = 1
+       |  numThreads = 1
+       |  connectionTimeout = 1s
+       |}
+       |""".stripMargin
+  val testDb: RManaged[Console, Db] = Managed.make {
+    for {
+      config <- ZIO.effect(
+        ConfigFactory
+          .parseString(defaultDbConfig)
+          .resolve()
+      )
+      db <- ZIO.effect(Db.forConfig(path = "db", config = config, classLoader = DBTestUtils.getClass.getClassLoader))
+    } yield db
+  } { db =>
+    ZIO
+      .effect(db.close())
+      .catchAll { t => putStrLnErr(s"Failed to close connections due to: $t") }
+      .ignore
+  }
+
+  val dbLayer: RLayer[Console, HasDb] = ZLayer.fromManaged {
+    for {
+      db   <- testDb
+      _ <- ZManaged.make {
+        Task.fromFuture { implicit ec =>
+          db.run {
+            for {
+              exists <- DataDaoZio.createTableDBIO(ec)
+              _      <- if (exists) DataDaoZio.dropTableDBIO else DBIO.successful(())
+              res      <- DataDaoZio.createTableDBIO(ec)
+            } yield res
+          }
+        }
+      } { _ => DataDaoZio.dropTable.provide(Has(db)).ignore }
+    } yield db
+  }
+  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], HasDb] = dbLayer.mapError(TestFailure.fail)
 
 }

@@ -1,11 +1,11 @@
 package com.riskident.dbzio
 
 
-import com.riskident.dbzio.DBZIO.HasDb
 import slick.ast.{BaseTypedType, ColumnOption, OptionTypedType, Type}
 import slick.dbio.DBIO
 import slick.jdbc.JdbcType
-import slick.jdbc.PostgresProfile.api._
+import slick.jdbc.JdbcBackend.Database
+import slick.jdbc.H2Profile.api.{Database => _, _}
 import slick.lifted.ProvenShape
 import slick.sql.SqlProfile.ColumnOption.SqlType
 import zio.{RIO, ZIO}
@@ -26,31 +26,25 @@ abstract class BaseTableQuery[T, E <: BaseTable[T]](cons: Tag => E)
 
   def extract(col: E => Rep[_]): Rep[_] = col(this.baseTableRow)
 
-  val createTable: ExecutionContext => DBIO[Boolean] = implicit ec =>
-    {
-      for {
-        exists <- sql"SELECT COUNT(*) > 0 as f FROM information_schema.tables where table_name = '#$tableName'"
-          .as[Boolean]
-          .head
-        _ <- if (exists) {
-          DBIO.successful(())
-        } else {
-          DBIO.sequence(this.schema.create +: allAdditionalDDLStatements.map(s => sqlu"#$s"))
-        }
-      } yield exists
-    }.withPinnedSession
-
-  /**
-   * Should clear all caches that could be used in subclasses. Default: Empty.
-   */
-  val clearCaches: DBZIO[Any, Unit] = DBZIO.unit
+  val createTableDBIO: ExecutionContext => DBIO[Boolean] = implicit ec => {
+    for {
+      exists <- sql"SELECT COUNT(*) > 0 as f FROM information_schema.tables where table_name = '#$tableName'"
+        .as[Boolean]
+        .head
+      _ <- if (exists) {
+        DBIO.successful(())
+      } else {
+        DBIO.sequence(this.schema.create +: allAdditionalDDLStatements.map(s => sqlu"#$s"))
+      }
+    } yield exists
+  }.withPinnedSession
 
   lazy val allAdditionalDDLStatements: Seq[String] =
     cols.additionalDDLStatements ++ cols.statementsForIndexesWithLikeSupport
 
   val dropTableDBIO: DBIO[Int] = sqlu"""drop table if exists #$tableName cascade"""
   val dropTable: RIO[HasDb, Unit] = ZIO
-    .accessM[HasDb] { env => ZIO.fromFuture(_ => env.get.run(dropTableDBIO)) }
+    .service[Database].flatMap { db => ZIO.fromFuture(_ => db.run(dropTableDBIO)) }
     .unit
 
   def allCols(tableAlias: String): String = cols(cols.*, tableAlias)
