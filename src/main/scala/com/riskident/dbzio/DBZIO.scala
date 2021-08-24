@@ -5,7 +5,7 @@ import shapeless.=:!=
 import slick.dbio.DBIO
 
 import zio._
-import zio.stm.TReentrantLock
+import zio.stm._
 import Aliases._
 import scala.collection.compat.Factory
 import scala.concurrent.{ExecutionContext, Future}
@@ -102,27 +102,31 @@ object DBZIO {
 
   def apply[R, E <: Throwable, T](action: ZIO[R, E, DBIO[T]]): DBZIO[R, T] = ZioOverDBIO(action)
 
-  class Sync(lock: TReentrantLock, ref: Ref[(Boolean, Promise[Nothing, Unit])]) {
+  class Sync(lock: TReentrantLock, ref: TRef[(Boolean, TPromise[Nothing, Unit])]) {
     def acquire: UIO[Unit] = lock.writeLock.use { _ =>
-      ref.get.flatMap {
-        case (f, p) => p.await.when(f) *> Promise.make[Nothing, Unit].flatMap(n => ref.set(true -> n))
-      }.unit
+      STM.atomically(for {
+        (f, p) <- ref.get
+        _      <- p.await.when(f)
+        pr     <- TPromise.make[Nothing, Unit]
+        _      <- ref.set(true -> pr)
+      } yield ())
     }
-
     def release: UIO[Unit] = {
-      ref.get.flatMap {
-        case (_, p) => ref.set(false -> p) *> p.succeed(()).unit
-      }
+      STM.atomically(for {
+        (_, p) <- ref.get
+        _      <- ref.set(false -> p)
+        _      <- p.succeed(())
+      } yield ())
     }
   }
-
   object Sync {
-    def make: UIO[Sync] =
+    def make: UIO[Sync] = STM.atomically {
       for {
-        promise <- Promise.make[Nothing, Unit]
-        ref <- Ref.make((false, promise))
-        lock <- TReentrantLock.make.commit
+        promise <- TPromise.make[Nothing, Unit]
+        ref     <- TRef.make((false, promise))
+        lock    <- TReentrantLock.make
       } yield new Sync(lock, ref)
+    }
   }
 
   def synchronized[R, T](sync: Sync)(action: DBZIO[R, T]): DBZIO[R with HasDb, T] = {
