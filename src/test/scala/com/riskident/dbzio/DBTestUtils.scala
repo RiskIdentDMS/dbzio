@@ -4,6 +4,7 @@ import com.typesafe.config.ConfigFactory
 import slick.jdbc.H2Profile.api.{Database => _, _}
 import slick.jdbc.JdbcBackend.{Database => Db}
 import slick.lifted.Tag
+import zio.blocking.Blocking
 import zio.{Tag => _, _}
 import zio.console.{Console, putStrLnErr}
 import zio.test.TestFailure
@@ -31,7 +32,7 @@ object DBTestUtils {
       } yield data.copy(id = id)
     }
 
-    def loadById(id: Int): DBZIO[HasDb, Data] = DBZIO { implicit ex => this.filter(_.id === id).take(1).result.head }
+    def loadById(id: Int): DBIO[Data] = this.filter(_.id === id).take(1).result.head
 
     def delete(id: Int): DBZIO[Any, Int] = DBZIO {
       this.filter(_.id === id).delete
@@ -88,7 +89,7 @@ object DBTestUtils {
       .ignore
   }
 
-  val dbLayer: RLayer[Console, HasDb] = ZLayer.fromManaged {
+  val dbLayer: RLayer[Console with Blocking, DbDependency] = ZLayer.fromManaged {
     for {
       db   <- testDb
       _ <- ZManaged.make {
@@ -103,7 +104,7 @@ object DBTestUtils {
         }
       } { _ => DataDaoZio.dropTable.provide(Has(db)).ignore }
     } yield db
-  }
-  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], HasDb] = dbLayer.mapError(TestFailure.fail)
+  } ++ ZLayer.identity[Blocking]
+  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] = dbLayer.mapError(TestFailure.fail)
 
 }

@@ -1,9 +1,19 @@
 package com.riskident
 
 import slick.jdbc.JdbcBackend.Database
-import zio.Has
+import zio.{Has, RIO, URIO, ZIO}
+import zio.blocking.Blocking
 
 package object dbzio {
   type HasDb = Has[Database]
-  type DBAction[T] = DBZIO[HasDb, T]
+
+  type DbDependency = HasDb with Blocking
+  type DBAction[T] = DBZIO[DbDependency, T]
+
+  type DbRIO[-R, +T] = RIO[R with DbDependency, T]
+  type DbURIO[-R, +T] = URIO[R with DbDependency, T]
+  type DbUIO[+T] = URIO[DbDependency, T]
+  type DbIO[+E, +T] = ZIO[DbDependency, E, T]
+  type DbZIO[-R, +E, +T] = ZIO[DbDependency with R, E, T]
+  type DbTask[+T] = RIO[DbDependency, T]
 }

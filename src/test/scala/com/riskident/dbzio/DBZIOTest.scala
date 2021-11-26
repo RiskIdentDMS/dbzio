@@ -1,21 +1,27 @@
 package com.riskident.dbzio
 
-
 import com.riskident.dbzio.DBTestUtils._
 import com.riskident.dbzio.DBZIO.DBZIOException
 import slick.jdbc.H2Profile.api.{Database => _, _}
-import slick.jdbc.JdbcBackend.Database
-import slick.sql.SqlStreamingAction
 import zio.clock.Clock
-import zio.console.Console
 import zio.duration._
+import zio.random.Random
 import zio.test.Assertion._
 import zio.test._
 import zio.test.environment.{TestClock, TestEnvironment}
 import zio.{Tag => _, _}
 
 object DBZIOTest extends DefaultRunnableSpec {
-
+  lazy val genStr: URIO[Sized, String] = {
+    Gen
+      .alphaNumericStringBounded(5, 10)
+      .runHead
+      .flatMap {
+        case Some(str) if str.nonEmpty && str(0).isLetter => UIO.succeed(str)
+        case _                                            => genStr
+      }
+      .provideSomeLayer[Sized](Random.live)
+  }
   val countDBIO: DBIO[Int] = DataDaoZio.length.result
   val countFailDBIO: DBIO[Int] = FailedDaoZio.length.result
 
@@ -25,7 +31,7 @@ object DBZIOTest extends DefaultRunnableSpec {
   val testExec: ZSpec[TestEnv, Throwable] = testM("execute mixed actions") {
     val timeout = 5.seconds
 
-    val insert: RIO[HasDb with Clock with TestClock, (Int, Int)] = (for {
+    val insert: DbRIO[Clock with TestClock, (Int, Int)] = (for {
       d1 <- DataDaoZio.doInsert(Data(0, "foo"))
       _ <- DBZIO(for {
         fiber <- ZIO.sleep(timeout).fork
@@ -42,7 +48,7 @@ object DBZIOTest extends DefaultRunnableSpec {
   }
 
   val testFailWithoutTx: ZSpec[TestEnv, Throwable] = testM("leave inconsistent data after fail without transaction") {
-    val insert: RIO[HasDb, Unit] = (for {
+    val insert: DbTask[Unit] = (for {
       d1 <- DataDaoZio.doInsert(Data(0, "foo"))
       _  <- DBZIO.fail(Ex())
       _  <- DataDaoZio.delete(d1.id)
@@ -62,7 +68,7 @@ object DBZIOTest extends DefaultRunnableSpec {
   val transaction: ZSpec[TestEnvironment, Throwable] = {
     def testRollback[T](name: String, fail: DBZIO[HasDb, T]): ZSpec[TestEnv, Throwable] =
       testM(s"rollback when fail inside $name") {
-        val insert: RIO[HasDb, (Int, Int)] = (for {
+        val insert: DbTask[(Int, Int)] = (for {
           d1 <- DataDaoZio.doInsert(Data(0, "foo"))
           d2 <- DataDaoZio.doInsert(Data(0, "bar"))
           _  <- fail
@@ -140,7 +146,7 @@ object DBZIOTest extends DefaultRunnableSpec {
         action.onError(_ => DBZIO(ref.set(true)))
       }
 
-      def prepare(action: DBZIO[Any, Unit]): URIO[HasDb, TestResult] =
+      def prepare(action: DBZIO[Any, Unit]): DbUIO[TestResult] =
         for {
           ref <- Ref.make(false)
           run <- assertM(combine(ref, action).result.run)(fails(isSubtype[Throwable](anything)))
@@ -218,14 +224,96 @@ object DBZIOTest extends DefaultRunnableSpec {
     )
   }
 
+  val collection: ZSpec[TestEnv, Throwable] = suite("collectAll")(
+    testM("collection") {
+      val count = 100
+      DBZIO
+        .collectAll {
+          (0 to count).toList.map { _ =>
+            for {
+              name <- DBZIO(genStr)
+              data <- DataDaoZio.doInsert(Data(0, name))
+            } yield assert(data.id)(isGreaterThan(0))
+          }
+        }
+        .result
+        .map(_.reduce(_ && _))
+    },
+    testM("Option[DBZIO[_, _]]") {
+      for {
+        name <- genStr
+        _    <- DBZIO.collectAll(None.map(_ => DataDaoZio.doInsert(Data(0, name)))).result
+        a1   <- assertM(DataDaoZio.load.result)(isEmpty)
+        _    <- DBZIO.collectAll(Some(1).map(_ => DataDaoZio.doInsert(Data(0, name)))).result
+        a2   <- assertM(DataDaoZio.load.result)(not(isEmpty))
+      } yield a1 && a2
+    }
+  )
+
+  val dbzioIf: ZSpec[TestEnv, Throwable] = suite("DBZIO.if*")(
+    testM("ifF") {
+      (for {
+        _  <- DBZIO.ifF(false, onTrue = DataDaoZio.doInsert(Data(0, "foo")).unit, onFalse = DBZIO.unit)
+        a1 <- DBZIO(assertM(DataDaoZio.load.result)(isEmpty))
+        _  <- DBZIO.ifF(true, onTrue = DataDaoZio.doInsert(Data(0, "foo")).unit, onFalse = DBZIO.unit)
+        a2 <- DBZIO(assertM(DataDaoZio.load.result)(not(isEmpty)))
+      } yield a1 && a2).result
+    },
+    testM("ifM") {
+      (for {
+        _  <- DBZIO.ifM(DBZIO.success(false), onTrue = DataDaoZio.doInsert(Data(0, "foo")).unit, onFalse = DBZIO.unit)
+        a1 <- DBZIO(assertM(DataDaoZio.load.result)(isEmpty))
+        _  <- DBZIO.ifM(DBZIO.success(true), onTrue = DataDaoZio.doInsert(Data(0, "foo")).unit, onFalse = DBZIO.unit)
+        a2 <- DBZIO(assertM(DataDaoZio.load.result)(not(isEmpty)))
+      } yield a1 && a2).result
+    }
+  )
+
+  val nested: ZSpec[TestEnv, Throwable] = {
+    val count = 1000
+    testM(s"Nested (dbio > zio > dbio > zio... $count times)") {
+      def recur(cnt: Int, ref: Ref[Int], action: DBAction[Int]): DBAction[Int] = {
+        if (cnt <= 0) {
+          action
+        } else {
+          recur(cnt - 1, ref, action.flatMap(_ => DBZIO(ref.updateAndGet(_ + 1).map(DBIO.successful(_)))))
+        }
+      }
+      for {
+        ref <- Ref.make(0)
+        action = recur(count, ref, DBZIO.success(0))
+        a1 <- assertM(action.result)(equalTo(count))
+        a2 <- assertM(ref.get)(equalTo(count))
+      } yield a1 && a2
+    }
+  }
+
+  val combined: ZSpec[TestEnv, Throwable] = testM("combined for-comprehension") {
+    (
+      for {
+        name          <- DBZIO(genStr)
+        data          <- DataDaoZio.doInsert(Data(0, name))
+        loaded        <- DBZIO(DataDaoZio.loadById(data.id))
+        loadedFromZio <- DBZIO(UIO.unit.as(DataDaoZio.loadById(data.id)))
+        newName = data.name
+        a1 <- DBZIO(assertM(DataDaoZio.load.result)(not(isEmpty)))
+      } yield a1 && assert(data.id)(not(equalTo(0)))
+        && assert(newName)(equalTo(name))
+        && assert(loaded)(equalTo(loadedFromZio))
+      ).result
+  }
   def spec: ZSpec[TestEnvironment, Any] = suite("DBZIO")(
     Seq(
       testExec,
       session,
       transaction,
+      collection,
+      dbzioIf,
+      nested,
       errorProc,
       foldM,
-      fold
+      fold,
+      combined
     ).map(_ @@ TestAspect.timeout(30.seconds) @@ TestAspect.timed): _*
   ).provideSomeLayer(testLayer) @@ TestAspect.sequential
 }
