@@ -41,7 +41,7 @@ import scala.language.higherKinds
  *
  * @todo Make error type
  */
-sealed trait DBZIO[-R, +T] {
+sealed abstract class DBZIO[-R, +T](private[DBZIO] val tag: ActionTag) {
 
   /** Returns a `DBZIO` whose success is mapped by the specified f function. */
   def map[Q](f: T => Q): DBZIO[R, Q] = new Map(this, f)
@@ -155,8 +155,6 @@ sealed trait DBZIO[-R, +T] {
    * @return [[ZIO]] with [[Database]], [[zio.blocking.Blocking]] and `R` dependencies.
    */
   def result: DbRIO[R, T] = DBZIO.result(this)
-
-  protected val tag: ActionTag
 }
 
 object DBZIO {
@@ -248,87 +246,61 @@ object DBZIO {
   }
 
   /** Represents a failed `DBZIO`. */
-  final private class Failure[E <: Throwable](val error: () => DBZIOException[E]) extends DBZIO[Any, Nothing] {
-    override protected val tag: ActionTag = ActionTag.Failure
-  }
+  final private class Failure[E <: Throwable](val error: () => DBZIOException[E])
+    extends DBZIO[Any, Nothing](ActionTag.Failure)
 
   /** Represents a `DBZIO` producing pure value. */
-  final private class PureValue[+T](val value: () => T) extends DBZIO[Any, T] {
-    override protected val tag: ActionTag = ActionTag.PureValue
-  }
+  final private class PureValue[+T](val value: () => T) extends DBZIO[Any, T](ActionTag.PureValue)
 
   /** Represents a `DBZIO` wrapped around [[ZIO]], that produces pure value (not [[DBIO]]). */
-  final private class PureZio[-R, E <: Throwable, +T](val action: ZIO[R, E, T]) extends DBZIO[R, T] {
-    override protected val tag: ActionTag = ActionTag.PureZio
-  }
+  final private class PureZio[-R, E <: Throwable, +T](val action: ZIO[R, E, T]) extends DBZIO[R, T](ActionTag.PureZio)
 
   /** Represents a `DBZIO` wrapped around single db-action ([[DBIO]]). */
-  final private class PureDBIO[+T](val action: () => DBIO[T]) extends DBZIO[Any, T] {
-    override protected val tag: ActionTag = ActionTag.PureDBIO
-  }
+  final private class PureDBIO[+T](val action: () => DBIO[T]) extends DBZIO[Any, T](ActionTag.PureDBIO)
 
   /** Represents a `DBZIO` wrapped around a chain of [[DBIO]] operations. Usually a for-comprehension. */
-  final private class DBIOChain[+T](val action: ExecutionContext => DBIO[T]) extends DBZIO[Any, T] {
-    override protected val tag: ActionTag = ActionTag.DBIOChain
-  }
+  final private class DBIOChain[+T](val action: ExecutionContext => DBIO[T]) extends DBZIO[Any, T](ActionTag.DBIOChain)
 
   /** Represents a `DBZIO` wrapped around [[ZIO]] effect, that produces a db-action ([[DBIO]]). */
-  final private class ZioOverDBIO[-R, +T](val action: RIO[R, DBIO[T]]) extends DBZIO[R, T] {
-    override protected val tag: ActionTag = ActionTag.ZioOverDBIO
-  }
+  final private class ZioOverDBIO[-R, +T](val action: RIO[R, DBIO[T]]) extends DBZIO[R, T](ActionTag.ZioOverDBIO)
 
   /** Represents a [[DBZIO.flatMap]] operation. */
   final private class FlatMap[-R1, -R2, A, +B](val self: DBZIO[R1, A], val next: A => DBZIO[R2, B])
-    extends DBZIO[R1 with R2, B] {
-    override protected val tag: ActionTag = ActionTag.FlatMap
-  }
+    extends DBZIO[R1 with R2, B](ActionTag.FlatMap)
 
   /** Represents a [[DBZIO.mapError]] operation. */
-  final private class MapError[R, T](val self: DBZIO[R, T], val errorMap: Throwable => Throwable) extends DBZIO[R, T] {
-    override protected val tag: ActionTag = ActionTag.MapError
-  }
+  final private class MapError[R, T](val self: DBZIO[R, T], val errorMap: Throwable => Throwable)
+    extends DBZIO[R, T](ActionTag.MapError)
 
   /** Represents a [[DBZIO.flatMapError]] operation. */
   final private class FlatMapError[R, R1, T](val self: DBZIO[R, T], val errorMap: Throwable => DBZIO[R1, Throwable])
-    extends DBZIO[R with R1, T] {
-    override protected val tag: ActionTag = ActionTag.FlatMapError
-  }
+    extends DBZIO[R with R1, T](ActionTag.FlatMapError)
 
   /** Represents a [[DBZIO.onError]] operation. */
   final private class OnError[R, R1 >: R, T](val self: DBZIO[R1, T], val errorMap: Cause[Throwable] => DBZIO[R, Any])
-    extends DBZIO[R, T] {
-    override protected val tag: ActionTag = ActionTag.OnError
-  }
+    extends DBZIO[R, T](ActionTag.OnError)
 
   /** Represents a [[DBZIO.foldM]] operation. */
   final private class FoldM[R, T, R1, B](
     val self: DBZIO[R, T],
     val failure: Throwable => DBZIO[R1, B],
     val success: T => DBZIO[R1, B]
-  ) extends DBZIO[R with R1, B] {
-    override protected val tag: ActionTag = ActionTag.FoldM
-  }
+  ) extends DBZIO[R with R1, B](ActionTag.FoldM)
 
   /** Represents a [[DBZIO.withPinnedSession]] operation. */
-  final private class WithPinnedSession[R, T](val self: DBZIO[R, T]) extends DBZIO[R, T] {
-    override protected val tag: ActionTag = ActionTag.WithPinnedSession
-  }
+  final private class WithPinnedSession[R, T](val self: DBZIO[R, T]) extends DBZIO[R, T](ActionTag.WithPinnedSession)
 
   /** Represents a [[DBZIO.transactionally]] operation. */
-  final private class Transactionally[R, T](val self: DBZIO[R, T], val profile: JdbcProfile) extends DBZIO[R, T] {
-    override protected val tag: ActionTag = ActionTag.Transactionally
-  }
+  final private class Transactionally[R, T](val self: DBZIO[R, T], val profile: JdbcProfile)
+    extends DBZIO[R, T](ActionTag.Transactionally)
 
   /** Represents a [[DBZIO.catchSome]] operation. */
   final private class CatchSome[R, T](val self: DBZIO[R, T], val pf: PartialFunction[Throwable, DBZIO[R, T]])
-    extends DBZIO[R, T] {
-    override protected val tag: ActionTag = ActionTag.CatchSome
-  }
+    extends DBZIO[R, T](ActionTag.CatchSome)
 
   /** Represents a [[DBZIO.catchAll]] operation. */
-  final private class CatchAll[R, T](val self: DBZIO[R, T], val f: Throwable => DBZIO[R, T]) extends DBZIO[R, T] {
-    override protected val tag: ActionTag = ActionTag.CatchAll
-  }
+  final private class CatchAll[R, T](val self: DBZIO[R, T], val f: Throwable => DBZIO[R, T])
+    extends DBZIO[R, T](ActionTag.CatchAll)
 
   /**
    * Represents a [[DBZIO collectAll]] operation. Also contains some methods for collection manipulations, since it
@@ -338,8 +310,7 @@ object DBZIO {
    */
   final private class CollectAll[R, T, C[+Element] <: Iterable[Element]](val col: C[DBZIO[R, T]])(
     implicit ev1: CanBuild[T, C[T]]
-  ) extends DBZIO[R, C[T]] {
-    override val tag: ActionTag = ActionTag.CollectAll
+  ) extends DBZIO[R, C[T]](ActionTag.CollectAll) {
 
     /**
      * Structure to collect different types of [[Result]] from each element of the batch.
@@ -444,18 +415,14 @@ object DBZIO {
     val self: DBZIO[R, T],
     val isolation: TransactionIsolation,
     val profile: JdbcProfile
-  ) extends DBZIO[R, T] {
-    override protected val tag: ActionTag = ActionTag.WithTransactionIsolation
-  }
+  ) extends DBZIO[R, T](ActionTag.WithTransactionIsolation)
 
   /** Represents [[DBZIO.map]] operation. */
-  final private class Map[R, T, Q](val self: DBZIO[R, T], val f: T => Q) extends DBZIO[R, Q] {
-    override protected val tag: ActionTag = ActionTag.Map
-  }
+  final private class Map[R, T, Q](val self: DBZIO[R, T], val f: T => Q) extends DBZIO[R, Q](ActionTag.Map)
 
   /** A tag that each `DBZIO` final instance of has to simplify pattern matching. */
-  private sealed trait ActionTag
-  private object ActionTag {
+  private[DBZIO] sealed trait ActionTag
+  private[DBZIO] object ActionTag {
     case object Failure                  extends ActionTag
     case object PureValue                extends ActionTag
     case object PureZio                  extends ActionTag
