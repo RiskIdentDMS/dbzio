@@ -44,13 +44,13 @@ import scala.language.higherKinds
 sealed trait DBZIO[-R, +T] {
 
   /** Returns a `DBZIO` whose success is mapped by the specified f function. */
-  def map[Q](f: T => Q): DBZIO[R, Q] = Map(this, f)
+  def map[Q](f: T => Q): DBZIO[R, Q] = new Map(this, f)
 
   /**
    * Returns a `DBZIO` that models the execution of this effect, followed by the passing of its value
    * to the specified continuation function `f`, followed by the effect that it returns.
    */
-  def flatMap[Q, R1](f: T => DBZIO[R1, Q]): DBZIO[R1 with R, Q] = FlatMap(this, f)
+  def flatMap[Q, R1](f: T => DBZIO[R1, Q]): DBZIO[R1 with R, Q] = new FlatMap(this, f)
 
   /**
    * Returns a `DBZIO` that first executes the outer `DBZIO`, and then executes the inner `DBZIO`,
@@ -59,22 +59,22 @@ sealed trait DBZIO[-R, +T] {
   def flatten[S, Q](implicit ev: T <:< DBZIO[S, Q]): DBZIO[S with R, Q] = flatMap(ev(_))
 
   /** Returns a `DBZIO` with its error mapped using the specified function. */
-  def mapError(f: Throwable => Throwable): DBZIO[R, T] = MapError(this, f)
+  def mapError(f: Throwable => Throwable): DBZIO[R, T] = new MapError(this, f)
 
   /**
    * Creates a composite `DBZIO` that represents this `DBZIO` followed by another
    * one that may depend on the error produced by this one.
    */
-  def flatMapError[R1](f: Throwable => DBZIO[R1, Throwable]): DBZIO[R with R1, T] = FlatMapError(this, f)
+  def flatMapError[R1](f: Throwable => DBZIO[R1, Throwable]): DBZIO[R with R1, T] = new FlatMapError(this, f)
 
   /** Runs the specified `DBZIO` if this `DBZIO` fails, providing the error to the `DBZIO` if it exists. */
-  def onError[R1 <: R](cleanup: Cause[Throwable] => DBZIO[R1, Any]): DBZIO[R1, T] = OnError(this, cleanup)
+  def onError[R1 <: R](cleanup: Cause[Throwable] => DBZIO[R1, Any]): DBZIO[R1, T] = new OnError(this, cleanup)
 
   /** Recovers from some or all of the error cases. */
-  def catchSome[R1, T2 >: T](pf: PartialFunction[Throwable, DBZIO[R1, T2]]): DBZIO[R with R1, T2] = CatchSome(this, pf)
+  def catchSome[R1, T2 >: T](pf: PartialFunction[Throwable, DBZIO[R1, T2]]): DBZIO[R with R1, T2] = new CatchSome(this, pf)
 
   /** Recovers from all errors. */
-  def catchAll[R1, T2 >: T](f: Throwable => DBZIO[R1, T2]): DBZIO[R with R1, T2] = CatchAll(this, f)
+  def catchAll[R1, T2 >: T](f: Throwable => DBZIO[R1, T2]): DBZIO[R with R1, T2] = new CatchAll(this, f)
 
   /**
    * Folds over the failure value or the success value to yield a `DBZIO` that
@@ -82,16 +82,16 @@ sealed trait DBZIO[-R, +T] {
    * function passed to `fold`.
    */
   def fold[B](failure: Throwable => B, success: T => B): DBZIO[R, B] =
-    FoldM(this, failure.andThen(DBZIO.success(_)), success.andThen(DBZIO.success(_)))
+    new FoldM[R, T, Any, B](this, failure.andThen(DBZIO.success(_)), success.andThen(DBZIO.success(_)))
 
   /**
-   * Recovers from errors by accepting one `DBZIO` to execute for the case of an
-   * error, and one `DBZIO` to execute for the case of success.
+   * Recovers from errors by accepting one `DBZIO` to execute for the private of an
+   * error, and one `DBZIO` to execute for the private of success.
    */
   def foldM[R1, B](
                     failure: Throwable => DBZIO[R1, B],
                     success: T => DBZIO[R1, B]
-                  ): DBZIO[R with R1, B] = FoldM(this, failure, success)
+                  ): DBZIO[R with R1, B] = new FoldM(this, failure, success)
 
   /**
    * Executes this `DBZIO` and returns its value, if the value is defined (given that `T` is `Option[K]`),
@@ -103,7 +103,7 @@ sealed trait DBZIO[-R, +T] {
     this.flatMap(_.fold(other)(t => DBZIO.success(Some(t).asInstanceOf[Q])))
   }
 
-  /** Creates `DBZIO` that executes `other` in case current fails. */
+  /** Creates `DBZIO` that executes `other` in private current fails. */
   def orElse[R1, Q >: T](other: DBZIO[R1, Q]): DBZIO[R with R1, Q] = {
     foldM(_ => other, t => DBZIO.success(t.asInstanceOf[Q]))
   }
@@ -123,7 +123,7 @@ sealed trait DBZIO[-R, +T] {
    *
    * Behaves exactly as [[DBIOAction.withPinnedSession]]
    */
-  def withPinnedSession: DBZIO[R, T] = WithPinnedSession(this)
+  def withPinnedSession: DBZIO[R, T] = new WithPinnedSession(this)
 
   /**
    * Returns new `DBZIO`, which executes current `DBZIO` in db-transaction,
@@ -132,7 +132,7 @@ sealed trait DBZIO[-R, +T] {
    *
    * Behaves exactly as [[slick.jdbc.JdbcActionComponent.JdbcActionExtensionMethods.transactionally]].
    */
-  def transactionally(implicit profile: JdbcProfile): DBZIO[R, T] = Transactionally(this, profile)
+  def transactionally(implicit profile: JdbcProfile): DBZIO[R, T] = new Transactionally(this, profile)
 
   /**
    * Returns a `DBZIO` with set transaction isolation level. In order to have any effect, should be called on a
@@ -147,7 +147,8 @@ sealed trait DBZIO[-R, +T] {
    * Behaves exactly as
    * [[slick.jdbc.JdbcActionComponent.JdbcActionExtensionMethods.withTransactionIsolation]]
    */
-  def withTransactionIsolation(ti: TransactionIsolation)(implicit profile: JdbcProfile): DBZIO[R, T] = WithTransactionIsolation(this, ti, profile)
+  def withTransactionIsolation(ti: TransactionIsolation)(implicit profile: JdbcProfile): DBZIO[R, T] =
+    new WithTransactionIsolation(this, ti, profile)
 
   /**
    * Creates the [[ZIO]] effect that executes current 'DBZIO'.
@@ -161,24 +162,24 @@ sealed trait DBZIO[-R, +T] {
 object DBZIO {
 
   /** Creates `DBZIO` that wraps a pure value. */
-  def success[A](v: => A): DBZIO[Any, A] = PureValue[A](() => v)
+  def success[A](v: => A): DBZIO[Any, A] = new PureValue[A](() => v)
 
   /** Creates `DBZIO` that wraps [[DBIO]]. */
-  def apply[T](action: => DBIO[T]): DBZIO[Any, T] = PureDBIO(() => action)
+  def apply[T](action: => DBIO[T]): DBZIO[Any, T] = new PureDBIO(() => action)
 
   /** Creates `DBZIO` that wraps a chain (usually a for-comprehension) of [[DBIO]]. */
-  def apply[T](action: ExecutionContext => DBIO[T]): DBZIO[Any, T] = DBIOChain(action)
+  def apply[T](action: ExecutionContext => DBIO[T]): DBZIO[Any, T] = new DBIOChain(action)
 
   /** Creates `DBZIO` that wraps [[ZIO]] that returns a pure value. */
-  def apply[R, E <: Throwable, T](action: ZIO[R, E, T])(implicit ev: T =:!= DBIO[_]): DBZIO[R, T] = PureZio(action)
+  def apply[R, E <: Throwable, T](action: ZIO[R, E, T])(implicit ev: T =:!= DBIO[_]): DBZIO[R, T] = new PureZio(action)
 
   /** Creates `DBZIO` that wraps [[ZIO]] that produces db-action ([[DBIO]]). */
   def apply[R, E <: Throwable, T](action: ZIO[R, E, DBIO[T]]): DBZIO[R, T] =
-    ZioOverDBIO(action)
+    new ZioOverDBIO(action)
 
   /** Creates `DBZIO` that fails with provided error. */
   def fail[E <: Throwable, T](error: => E): DBZIO[Any, T] =
-    Failure(() => DBZIOException(Cause.fail(error)))
+    new Failure(() => DBZIOException(Cause.fail(error)))
 
   /** A generic wrapper for all errors produced by `DBZIO`. */
   case class DBZIOException[+E <: Throwable](cause: Cause[E]) extends Throwable {
@@ -206,11 +207,10 @@ object DBZIO {
    *
    * @note Behaves as [[DBIO.seq]], meaning that first error fails the whole batch.
    */
-  def collectAll[R, T, C[+Element] <: Iterable[Element]](
-                                                          col: C[DBZIO[R, T]]
-                                                        )(
-                                                          implicit ev1: CanBuild[T, C[T]]
-                                                        ): DBZIO[R, C[T]] = CollectAll(col)
+  def collectAll[R, T, C[+Element] <: Iterable[Element]](col: C[DBZIO[R, T]])
+                                                        (implicit ev1: CanBuild[T, C[T]]): DBZIO[R, C[T]] = {
+    new CollectAll(col)
+  }
 
   /**
    * Creates `DBZIO` that executes a batch of `DBZIO`, returning [[scala.collection.immutable.Seq]] of results from
@@ -248,85 +248,85 @@ object DBZIO {
   }
 
   /** Represents a failed `DBZIO`. */
-  final case class Failure[E <: Throwable] private[DBZIO] (error: () => DBZIOException[E]) extends DBZIO[Any, Nothing] {
+  final private class Failure[E <: Throwable](val error: () => DBZIOException[E]) extends DBZIO[Any, Nothing] {
     override protected val tag: ActionTag = ActionTag.Failure
   }
 
   /** Represents a `DBZIO` producing pure value. */
-  final case class PureValue[+T] private[DBZIO] (value: () => T) extends DBZIO[Any, T] {
+  final private class PureValue[+T](val value: () => T) extends DBZIO[Any, T] {
     override protected val tag: ActionTag = ActionTag.PureValue
   }
 
   /** Represents a `DBZIO` wrapped around [[ZIO]], that produces pure value (not [[DBIO]]). */
-  final case class PureZio[-R, E <: Throwable, +T] private[DBZIO] (action: ZIO[R, E, T]) extends DBZIO[R, T] {
+  final private class PureZio[-R, E <: Throwable, +T](val action: ZIO[R, E, T]) extends DBZIO[R, T] {
     override protected val tag: ActionTag = ActionTag.PureZio
   }
 
   /** Represents a `DBZIO` wrapped around single db-action ([[DBIO]]). */
-  final case class PureDBIO[+T] private[DBZIO] (action: () => DBIO[T]) extends DBZIO[Any, T] {
+  final private class PureDBIO[+T](val action: () => DBIO[T]) extends DBZIO[Any, T] {
     override protected val tag: ActionTag = ActionTag.PureDBIO
   }
 
   /** Represents a `DBZIO` wrapped around a chain of [[DBIO]] operations. Usually a for-comprehension. */
-  final case class DBIOChain[+T] private[DBZIO] (action: ExecutionContext => DBIO[T]) extends DBZIO[Any, T] {
+  final private class DBIOChain[+T](val action: ExecutionContext => DBIO[T]) extends DBZIO[Any, T] {
     override protected val tag: ActionTag = ActionTag.DBIOChain
   }
 
   /** Represents a `DBZIO` wrapped around [[ZIO]] effect, that produces a db-action ([[DBIO]]). */
-  final case class ZioOverDBIO[-R, +T] private[DBZIO] (action: RIO[R, DBIO[T]]) extends DBZIO[R, T] {
+  final private class ZioOverDBIO[-R, +T](val action: RIO[R, DBIO[T]]) extends DBZIO[R, T] {
     override protected val tag: ActionTag = ActionTag.ZioOverDBIO
   }
 
   /** Represents a [[DBZIO.flatMap]] operation. */
-  final case class FlatMap[-R1, -R2, A, +B] private (self: DBZIO[R1, A], next: A => DBZIO[R2, B])
+  final private class FlatMap[-R1, -R2, A, +B](val self: DBZIO[R1, A], val next: A => DBZIO[R2, B])
     extends DBZIO[R1 with R2, B] {
     override protected val tag: ActionTag = ActionTag.FlatMap
   }
 
   /** Represents a [[DBZIO.mapError]] operation. */
-  final case class MapError[R, T] private (self: DBZIO[R, T], errorMap: Throwable => Throwable) extends DBZIO[R, T] {
+  final private class MapError[R, T](val self: DBZIO[R, T], val errorMap: Throwable => Throwable) extends DBZIO[R, T] {
     override protected val tag: ActionTag = ActionTag.MapError
   }
 
   /** Represents a [[DBZIO.flatMapError]] operation. */
-  final case class FlatMapError[R, R1, T] private (self: DBZIO[R, T], errorMap: Throwable => DBZIO[R1, Throwable])
+  final private class FlatMapError[R, R1, T](val self: DBZIO[R, T], val errorMap: Throwable => DBZIO[R1, Throwable])
     extends DBZIO[R with R1, T] {
     override protected val tag: ActionTag = ActionTag.FlatMapError
   }
 
   /** Represents a [[DBZIO.onError]] operation. */
-  final case class OnError[R, R1 >: R, T] private (self: DBZIO[R1, T], errorMap: Cause[Throwable] => DBZIO[R, Any])
+  final private class OnError[R, R1 >: R, T](val self: DBZIO[R1, T], val errorMap: Cause[Throwable] => DBZIO[R, Any])
     extends DBZIO[R, T] {
     override protected val tag: ActionTag = ActionTag.OnError
   }
 
   /** Represents a [[DBZIO.foldM]] operation. */
-  final case class FoldM[R, T, R1, B] private (
-                                                self: DBZIO[R, T],
-                                                failure: Throwable => DBZIO[R1, B],
-                                                success: T => DBZIO[R1, B]
-                                              ) extends DBZIO[R with R1, B] {
+  final private class FoldM[R, T, R1, B](
+    val self: DBZIO[R, T],
+    val failure: Throwable => DBZIO[R1, B],
+    val success: T => DBZIO[R1, B]
+  ) extends DBZIO[R with R1, B] {
     override protected val tag: ActionTag = ActionTag.FoldM
   }
 
   /** Represents a [[DBZIO.withPinnedSession]] operation. */
-  final case class WithPinnedSession[R, T] private (self: DBZIO[R, T]) extends DBZIO[R, T] {
+  final private class WithPinnedSession[R, T](val self: DBZIO[R, T]) extends DBZIO[R, T] {
     override protected val tag: ActionTag = ActionTag.WithPinnedSession
   }
 
   /** Represents a [[DBZIO.transactionally]] operation. */
-  final case class Transactionally[R, T] private (self: DBZIO[R, T], profile: JdbcProfile) extends DBZIO[R, T] {
+  final private class Transactionally[R, T](val self: DBZIO[R, T], val profile: JdbcProfile) extends DBZIO[R, T] {
     override protected val tag: ActionTag = ActionTag.Transactionally
   }
 
   /** Represents a [[DBZIO.catchSome]] operation. */
-  final case class CatchSome[R, T] private (self: DBZIO[R, T], pf: PartialFunction[Throwable, DBZIO[R, T]])
+  final private class CatchSome[R, T](val self: DBZIO[R, T], val pf: PartialFunction[Throwable, DBZIO[R, T]])
     extends DBZIO[R, T] {
     override protected val tag: ActionTag = ActionTag.CatchSome
   }
 
   /** Represents a [[DBZIO.catchAll]] operation. */
-  final case class CatchAll[R, T] private (self: DBZIO[R, T], f: Throwable => DBZIO[R, T]) extends DBZIO[R, T] {
+  final private class CatchAll[R, T](val self: DBZIO[R, T], val f: Throwable => DBZIO[R, T]) extends DBZIO[R, T] {
     override protected val tag: ActionTag = ActionTag.CatchAll
   }
 
@@ -336,7 +336,7 @@ object DBZIO {
    *
    * Behaves exactly as [[DBIO.seq]], in a sense that first error fails the whole batch.
    */
-  final case class CollectAll[R, T, C[+Element] <: Iterable[Element]] private (col: C[DBZIO[R, T]])(
+  final private class CollectAll[R, T, C[+Element] <: Iterable[Element]](val col: C[DBZIO[R, T]])(
     implicit ev1: CanBuild[T, C[T]]
   ) extends DBZIO[R, C[T]] {
     override val tag: ActionTag = ActionTag.CollectAll
@@ -403,7 +403,7 @@ object DBZIO {
               }
               .map { r =>
                 val (v, d) = r.foldLeft((Seq.empty[(Int, T)], Seq.empty[(Int, DBIO[T])])) {
-                  case ((tx, dbios), el) =>
+                 case ((tx, dbios), el) =>
                     el._2.foldTo(x => (tx :+ (el._1, x), dbios), x => (tx, dbios :+ (el._1, x)))
                 }
 
@@ -440,19 +440,22 @@ object DBZIO {
   }
 
   /** Represents [[DBZIO.withTransactionIsolation]] operation. */
-  final case class WithTransactionIsolation[R, T] private (self: DBZIO[R, T], isolation: TransactionIsolation, profile: JdbcProfile)
-    extends DBZIO[R, T] {
+  final private class WithTransactionIsolation[R, T](
+    val self: DBZIO[R, T],
+    val isolation: TransactionIsolation,
+    val profile: JdbcProfile
+  ) extends DBZIO[R, T] {
     override protected val tag: ActionTag = ActionTag.WithTransactionIsolation
   }
 
   /** Represents [[DBZIO.map]] operation. */
-  final case class Map[R, T, Q] private (self: DBZIO[R, T], f: T => Q) extends DBZIO[R, Q] {
+  final private class Map[R, T, Q](val self: DBZIO[R, T], val f: T => Q) extends DBZIO[R, Q] {
     override protected val tag: ActionTag = ActionTag.Map
   }
 
   /** A tag that each `DBZIO` final instance of has to simplify pattern matching. */
-  sealed trait ActionTag
-  object ActionTag {
+  private sealed trait ActionTag
+  private object ActionTag {
     case object Failure                  extends ActionTag
     case object PureValue                extends ActionTag
     case object PureZio                  extends ActionTag
@@ -480,10 +483,10 @@ object DBZIO {
    * already an open db-transaction on higher level.
    */
   private case class TransactionInformation(
-                                             inTransaction: Boolean,
-                                             isolation: Option[TransactionIsolation],
-                                             inPinnedSession: Boolean
-                                           )
+    inTransaction: Boolean,
+    isolation: Option[TransactionIsolation],
+    inPinnedSession: Boolean
+  )
 
   private object TransactionInformation {
     val empty: TransactionInformation =
@@ -528,7 +531,7 @@ object DBZIO {
   private object ZioResult {
 
     /** `ZioResult` that contains pure value (NOT [[DBIO]]) */
-    case class Value[T](v: T) extends ZioResult[T] {
+    private case class Value[T](v: T) extends ZioResult[T] {
       override def fold[X](left: T => X, right: DBIO[T] => DBIO[X]): ZioResult[X] = copy(v = left(v))
       override def foldTo[X](left: T => X, right: DBIO[T] => X): X                = left(v)
 
@@ -538,7 +541,7 @@ object DBZIO {
     }
 
     /** `ZioResult` that contains [[DBIO]] */
-    case class Query[T](q: DBIO[T]) extends ZioResult[T] {
+    private case class Query[T](q: DBIO[T]) extends ZioResult[T] {
       override def fold[X](left: T => X, right: DBIO[T] => DBIO[X]): ZioResult[X] = copy(q = right(q))
       override def foldTo[X](left: T => X, right: DBIO[T] => X): X                = right(q)
 
@@ -607,11 +610,11 @@ object DBZIO {
      * - [[Result.Zio]]
      */
     protected def transformAll[R2 <: R, T2](
-                                             onError: DBZIOException[Throwable] => DBZIOException[Throwable],
-                                             onZio: RIO[R, ZioResult[T]] => RIO[R2, ZioResult[T2]],
-                                             onDbio: DBIO[T] => DBIO[T2],
-                                             onPure: T => T2
-                                           ): Result[R2, T2] = throw new RuntimeException(s"Should not be called for ${this.getClass.getSimpleName}")
+      onError: DBZIOException[Throwable] => DBZIOException[Throwable],
+      onZio: RIO[R, ZioResult[T]] => RIO[R2, ZioResult[T2]],
+      onDbio: DBIO[T] => DBIO[T2],
+      onPure: T => T2
+    ): Result[R2, T2] = throw new RuntimeException(s"Should not be called for ${this.getClass.getSimpleName}")
 
     /**
      * Chains another `Result` based on the value type. All operations on `Result` are expressed
@@ -629,36 +632,33 @@ object DBZIO {
      * - [[Result.Zio]]
      */
     protected def transformAllM[R2 <: R, T2](
-                                              onError: DBZIOException[Throwable] => Result[R2, T2],
-                                              onZio: RIO[R, ZioResult[T]] => Result[R2, T2],
-                                              onDbio: DBIO[T] => Result[R2, T2],
-                                              onPure: T => Result[R2, T2]
-                                            ): Result[R2, T2] = throw new RuntimeException(s"Should not be called for ${this.getClass.getSimpleName}")
+      onError: DBZIOException[Throwable] => Result[R2, T2],
+      onZio: RIO[R, ZioResult[T]] => Result[R2, T2],
+      onDbio: DBIO[T] => Result[R2, T2],
+      onPure: T => Result[R2, T2]
+    ): Result[R2, T2] = throw new RuntimeException(s"Should not be called for ${this.getClass.getSimpleName}")
 
     /** Creates `Result` that transforms final pure value of the current. */
-    def map[T2](f: T => T2)(implicit ec: ExecutionContext): Result[R, T2] = Result.Map(this, f)
+    def map[T2](f: T => T2)(implicit ec: ExecutionContext): Result[R, T2] = new Result.Map(this, f)
 
     /** Creates `Result` that chains current and the next one return by `f`.  */
-    def flatMap[T2, R1 <: R](
-                              f: T => Result[R1, T2]
-                            )(implicit ec: ExecutionContext, r: Runtime[R1]): Result[R1, T2] = Result.FlatMap(this, f)
+    def flatMap[T2, R1 <: R](f: T => Result[R1, T2])
+                            (implicit ec: ExecutionContext, r: Runtime[R1]): Result[R1, T2] = new Result.FlatMap(this, f)
 
     /** Creates `Result` that transforms an error (if current is [[Result.Error]] or execution of containing value
      * will produce an error).
      */
-    def mapError(f: Throwable => Throwable)(implicit ec: ExecutionContext): Result[R, T] = Result.MapError(this, f)
+    def mapError(f: Throwable => Throwable)(implicit ec: ExecutionContext): Result[R, T] = new Result.MapError(this, f)
 
     /** Creates `Result` that transforms an error (if current is [[Result.Error]] or execution of containing value
      * will produce an error) to a new `Result` and then executes it.
      */
-    def flatMapError[R2 <: R](
-                               f: Throwable => Result[R2, Throwable]
-                             )(implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T] = Result.FlatMapError(this, f)
+    def flatMapError[R2 <: R](f: Throwable => Result[R2, Throwable])
+                             (implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T] = new Result.FlatMapError(this, f)
 
     /** Creates `Result` with cleanup action, which will be executed if execution of the current one fails. */
-    def onError[R2 <: R](
-                          f: Throwable => Result[R2, Any]
-                        )(implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T] = Result.OnError(this, f)
+    def onError[R2 <: R](f: Throwable => Result[R2, Any])
+                        (implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T] = new Result.OnError(this, f)
 
     /** Creates `Result` that will execute current one and then will execute `f` or `e` base of success or failure of
      *  the current one.
@@ -666,22 +666,20 @@ object DBZIO {
     def foldM[T2, R2 <: R](f: T => Result[R2, T2], e: Throwable => Result[R2, T2])(
       implicit ec: ExecutionContext,
       r: Runtime[R2]
-    ): Result[R2, T2] = Result.FoldM(this, f, e)
+    ): Result[R2, T2] = new Result.FoldM(this, f, e)
 
     /** Creates `Result`, which will apply transformation to the [[DBIO]] if current is [[Result.PureDbio]] or
      * [[Result.Zio]] that produces [[DBIO]]. For other types of `Result` has no effects.
      */
-    def mapDBIO[T2 >: T](f: DBIO[T2] => DBIO[T2]): Result[R, T2] = Result.MapDBIO(this, f)
+    def mapDBIO[T2 >: T](f: DBIO[T2] => DBIO[T2]): Result[R, T2] = new Result.MapDBIO(this, f)
 
     /** Creates `Result` with fallback for some of the errors that might arise during execution of the current one. */
-    def catchSome[R2 <: R, T2 >: T](
-                                     f: PartialFunction[Throwable, Result[R2, T2]]
-                                   )(implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T2] = Result.CatchSome(this, f)
+    def catchSome[R2 <: R, T2 >: T](f: PartialFunction[Throwable, Result[R2, T2]])
+                                   (implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T2] = new Result.CatchSome(this, f)
 
     /** Creates `Result` with fallback for all of the errors that might arise during execution of the current one. */
-    def catchAll[T2 >: T, R2 <: R](
-                                    f: Throwable => Result[R2, T2]
-                                  )(implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T2] = Result.CatchAll(this, f)
+    def catchAll[T2 >: T, R2 <: R](f: Throwable => Result[R2, T2])
+                                  (implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T2] = new Result.CatchAll(this, f)
   }
 
   private object Result {
@@ -693,20 +691,20 @@ object DBZIO {
       override val isError: Boolean                                = true
 
       override protected def transformAll[R2 <: Any, T2](
-                                                          onError: DBZIOException[Throwable] => DBZIOException[Throwable],
-                                                          onZio: RIO[Any, ZioResult[Nothing]] => RIO[R2, ZioResult[T2]],
-                                                          onDbio: DBIO[Nothing] => DBIO[T2],
-                                                          onPure: Nothing => T2
-                                                        ): Result[R2, T2] = {
+        onError: DBZIOException[Throwable] => DBZIOException[Throwable],
+        onZio: RIO[Any, ZioResult[Nothing]] => RIO[R2, ZioResult[T2]],
+        onDbio: DBIO[Nothing] => DBIO[T2],
+        onPure: Nothing => T2
+      ): Result[R2, T2] = {
         copy(value = _ => onError(value(())))
       }
 
       override protected def transformAllM[R2 <: Any, T2](
-                                                           onError: DBZIOException[Throwable] => Result[R2, T2],
-                                                           onZio: RIO[Any, ZioResult[Nothing]] => Result[R2, T2],
-                                                           onDbio: DBIO[Nothing] => Result[R2, T2],
-                                                           onPure: Nothing => Result[R2, T2]
-                                                         ): Result[R2, T2] = {
+        onError: DBZIOException[Throwable] => Result[R2, T2],
+        onZio: RIO[Any, ZioResult[Nothing]] => Result[R2, T2],
+        onDbio: DBIO[Nothing] => Result[R2, T2],
+        onPure: Nothing => Result[R2, T2]
+      ): Result[R2, T2] = {
         onError(value(()))
       }
     }
@@ -717,20 +715,20 @@ object DBZIO {
       override def eval: Result[Any, T]        = this
       override val isPure: Boolean             = true
       override protected def transformAll[R2 <: Any, T2](
-                                                          onError: DBZIOException[Throwable] => DBZIOException[Throwable],
-                                                          onZio: RIO[Any, ZioResult[T]] => RIO[R2, ZioResult[T2]],
-                                                          onDbio: DBIO[T] => DBIO[T2],
-                                                          onPure: T => T2
-                                                        ): Result[R2, T2] = {
+        onError: DBZIOException[Throwable] => DBZIOException[Throwable],
+        onZio: RIO[Any, ZioResult[T]] => RIO[R2, ZioResult[T2]],
+        onDbio: DBIO[T] => DBIO[T2],
+        onPure: T => T2
+      ): Result[R2, T2] = {
         Result.pure(onPure(value(())))
       }
 
       override protected def transformAllM[R2 <: Any, T2](
-                                                           onError: DBZIOException[Throwable] => Result[R2, T2],
-                                                           onZio: RIO[Any, ZioResult[T]] => Result[R2, T2],
-                                                           onDbio: DBIO[T] => Result[R2, T2],
-                                                           onPure: T => Result[R2, T2]
-                                                         ): Result[R2, T2] = {
+        onError: DBZIOException[Throwable] => Result[R2, T2],
+        onZio: RIO[Any, ZioResult[T]] => Result[R2, T2],
+        onDbio: DBIO[T] => Result[R2, T2],
+        onPure: T => Result[R2, T2]
+      ): Result[R2, T2] = {
         onPure(value(()))
       }
     }
@@ -741,20 +739,20 @@ object DBZIO {
       override def eval: Result[R, T]                = this
       override val isZio: Boolean                    = true
       override protected def transformAll[R2 <: R, T2](
-                                                        onError: DBZIOException[Throwable] => DBZIOException[Throwable],
-                                                        onZio: RIO[R, ZioResult[T]] => RIO[R2, ZioResult[T2]],
-                                                        onDbio: DBIO[T] => DBIO[T2],
-                                                        onPure: T => T2
-                                                      ): Result[R2, T2] = {
+        onError: DBZIOException[Throwable] => DBZIOException[Throwable],
+        onZio: RIO[R, ZioResult[T]] => RIO[R2, ZioResult[T2]],
+        onDbio: DBIO[T] => DBIO[T2],
+        onPure: T => T2
+      ): Result[R2, T2] = {
         Result.zio(onZio(value))
       }
 
       override protected def transformAllM[R2 <: R, T2](
-                                                         onError: DBZIOException[Throwable] => Result[R2, T2],
-                                                         onZio: RIO[R, ZioResult[T]] => Result[R2, T2],
-                                                         onDbio: DBIO[T] => Result[R2, T2],
-                                                         onPure: T => Result[R2, T2]
-                                                       ): Result[R2, T2] = {
+        onError: DBZIOException[Throwable] => Result[R2, T2],
+        onZio: RIO[R, ZioResult[T]] => Result[R2, T2],
+        onDbio: DBIO[T] => Result[R2, T2],
+        onPure: T => Result[R2, T2]
+      ): Result[R2, T2] = {
         onZio(value)
       }
     }
@@ -765,26 +763,26 @@ object DBZIO {
       override def eval: Result[Any, T]         = this
       override val isDbio: Boolean              = true
       override protected def transformAll[R2 <: Any, T2](
-                                                          onError: DBZIOException[Throwable] => DBZIOException[Throwable],
-                                                          onZio: RIO[Any, ZioResult[T]] => RIO[R2, ZioResult[T2]],
-                                                          onDbio: DBIO[T] => DBIO[T2],
-                                                          onPure: T => T2
-                                                        ): Result[R2, T2] = {
+        onError: DBZIOException[Throwable] => DBZIOException[Throwable],
+        onZio: RIO[Any, ZioResult[T]] => RIO[R2, ZioResult[T2]],
+        onDbio: DBIO[T] => DBIO[T2],
+        onPure: T => T2
+      ): Result[R2, T2] = {
         Result.dbio(onDbio(value(())))
       }
 
       override protected def transformAllM[R2 <: Any, T2](
-                                                           onError: DBZIOException[Throwable] => Result[R2, T2],
-                                                           onZio: RIO[Any, ZioResult[T]] => Result[R2, T2],
-                                                           onDbio: DBIO[T] => Result[R2, T2],
-                                                           onPure: T => Result[R2, T2]
-                                                         ): Result[R2, T2] = {
+        onError: DBZIOException[Throwable] => Result[R2, T2],
+        onZio: RIO[Any, ZioResult[T]] => Result[R2, T2],
+        onDbio: DBIO[T] => Result[R2, T2],
+        onPure: T => Result[R2, T2]
+      ): Result[R2, T2] = {
         onDbio(value(()))
       }
 
     }
 
-    case class Map[R, T1, T2](current: Result[R, T1], f: T1 => T2)(implicit ec: ExecutionContext)
+    class Map[R, T1, T2](current: Result[R, T1], f: T1 => T2)(implicit ec: ExecutionContext)
       extends Result[R, T2] {
       def eval: Result[R, T2] = {
         val self = current.eval
@@ -799,7 +797,7 @@ object DBZIO {
       }
     }
 
-    case class FlatMap[R, T1, T2](current: Result[R, T1], f: T1 => Result[R, T2])(
+    class FlatMap[R, T1, T2](current: Result[R, T1], f: T1 => Result[R, T2])(
       implicit ec: ExecutionContext,
       r: Runtime[R]
     ) extends Result[R, T2] {
@@ -829,10 +827,8 @@ object DBZIO {
 
     }
 
-    case class FlatMapError[R, T, R2 <: R](
-                                            current: Result[R, T],
-                                            f: Throwable => Result[R2, Throwable]
-                                          )(implicit ec: ExecutionContext, r: Runtime[R2])
+    class FlatMapError[R, T, R2 <: R](current: Result[R, T], f: Throwable => Result[R2, Throwable])
+                                     (implicit ec: ExecutionContext, r: Runtime[R2])
       extends Result[R2, T] {
 
       override def eval: Result[R2, T] = {
@@ -842,34 +838,26 @@ object DBZIO {
           case Success(value) => DBIO.successful(value)
         }
         val self = current.eval
+
+        val onFailureZ: Throwable => RIO[R2, ZioResult[T]] = a => waitFor(f(a))(Context.ZIO).flatMap {
+          _.foldTo(Task.fail(_), dbio => UIO(ZioResult(dbio.flatMap(DBIO.failed))))
+        }
+
         self
           .transformAllM(
             onPure = _ => self,
             onError = e => f(e.cause.squash).flatMap(t => Result.error(wrapException(t))),
             onDbio = d => Result.dbio(mapDBIO(d)),
-            onZio = z =>
-              Result.zio {
-                for {
-                  run <- z.either
-                  res <- run match {
-                    case Left(a) =>
-                      waitFor(f(a))(Context.ZIO).flatMap {
-                        _.foldTo(Task.fail(_), dbio => UIO(ZioResult(dbio.flatMap(DBIO.failed))))
-                      }
-                    case Right(b) =>
-                      UIO(b.mapDBIO(mapDBIO))
-                  }
-                } yield res
-              }
+            onZio = z => Result.zio {
+              z.foldM(onFailureZ, r => UIO(r.mapDBIO(mapDBIO)))
+            }
           )
           .eval
       }
     }
 
-    case class OnError[R, T, R2 <: R](
-                                       current: Result[R, T],
-                                       f: Throwable => Result[R2, Any]
-                                     )(implicit ec: ExecutionContext, r: Runtime[R2])
+    class OnError[R, T, R2 <: R](current: Result[R, T], f: Throwable => Result[R2, Any])
+                                (implicit ec: ExecutionContext, r: Runtime[R2])
       extends Result[R2, T] {
 
       override def eval: Result[R2, T] = {
@@ -882,30 +870,26 @@ object DBZIO {
           case Success(value) => DBIO.successful(value)
         }
 
+        val onFailureZ: Throwable => RIO[R2, ZioResult[T]] = a => {
+          val nextZio = waitFor(f(a))(Context.ZIO)
+          nextZio.map(_.foldTo(_ => doFail(a), _.flatMap(_ => doFail(a)))).map(ZioResult[T])
+        }
+
         val self = current.eval
         self
           .transformAllM(
             onError = e => f(e.cause.squash).flatMap(_ => self),
             onPure = _ => self,
-            onZio = z =>
-              Result.zio {
-                for {
-                  t <- z.either
-                  res <- t match {
-                    case Left(a) =>
-                      val nextZio = waitFor(f(a))(Context.ZIO)
-                      nextZio.map(_.foldTo(_ => doFail(a), _.flatMap(_ => doFail(a)))).map(ZioResult[T])
-                    case Right(b) => UIO(b.mapDBIO(mapDBIO))
-                  }
-                } yield res
-              },
+            onZio = z => Result.zio {
+              z.foldM(onFailureZ, b => UIO(b.mapDBIO(mapDBIO)))
+            },
             onDbio = d => Result.dbio(mapDBIO(d))
           )
           .eval
       }
     }
 
-    case class Fold[R, T, T2](current: Result[R, T], f: T => T2, e: Throwable => T2)(implicit ec: ExecutionContext)
+    class Fold[R, T, T2](current: Result[R, T], f: T => T2, e: Throwable => T2)(implicit ec: ExecutionContext)
       extends Result[R, T2] {
       override def eval: Result[R, T2] = {
         val foldDBIO: DBIO[T] => DBIO[T2] = _.asTry.flatMap {
@@ -928,7 +912,7 @@ object DBZIO {
       }
     }
 
-    case class MapError[R, T](current: Result[R, T], f: Throwable => Throwable)(implicit ec: ExecutionContext)
+    class MapError[R, T](current: Result[R, T], f: Throwable => Throwable)(implicit ec: ExecutionContext)
       extends Result[R, T] {
       def eval: Result[R, T] = {
         val dbioTransform: DBIO[T] => DBIO[T] = _.asTry.flatMap {
@@ -948,7 +932,7 @@ object DBZIO {
       }
     }
 
-    case class FoldM[R, T, T2, R2 <: R](current: Result[R, T], f: T => Result[R2, T2], e: Throwable => Result[R2, T2])(
+    class FoldM[R, T, T2, R2 <: R](current: Result[R, T], f: T => Result[R2, T2], e: Throwable => Result[R2, T2])(
       implicit ec: ExecutionContext,
       r: Runtime[R2]
     ) extends Result[R2, T2] {
@@ -985,7 +969,7 @@ object DBZIO {
       }
     }
 
-    case class MapDBIO[R, T, T2 >: T](current: Result[R, T], f: DBIO[T2] => DBIO[T2]) extends Result[R, T2] {
+    class MapDBIO[R, T, T2 >: T](current: Result[R, T], f: DBIO[T2] => DBIO[T2]) extends Result[R, T2] {
       override def eval: Result[R, T2] = {
         val self = current.eval
 
@@ -998,7 +982,7 @@ object DBZIO {
       }
     }
 
-    case class CatchSome[R, T, R2 <: R, T2 >: T](
+    class CatchSome[R, T, R2 <: R, T2 >: T](
                                                   current: Result[R, T],
                                                   catchSome: PartialFunction[Throwable, Result[R2, T2]]
                                                 )(implicit ec: ExecutionContext, r: Runtime[R2])
@@ -1026,7 +1010,7 @@ object DBZIO {
           .eval
       }
     }
-    case class CatchAll[R, T, T2 >: T, R2 <: R](current: Result[R, T], f: Throwable => Result[R2, T2])(
+    class CatchAll[R, T, T2 >: T, R2 <: R](current: Result[R, T], f: Throwable => Result[R2, T2])(
       implicit ec: ExecutionContext,
       r: Runtime[R2]
     ) extends Result[R2, T2] {
@@ -1053,12 +1037,13 @@ object DBZIO {
     }
 
     def error(error: => DBZIOException[Throwable]): Result[Any, Nothing] = Error(_ => error)
+
     def dbio[T](dbio: => DBIO[T]): Result[Any, T]                        = PureDbio(_ => dbio)
-    def zio[R, T](
-                   zio: RIO[R, ZioResult[T]]
-                 )(implicit ev: T =:!= ZIO[_, _, _], ev2: T =:!= DBIO[_]): Result[R, T] = Zio(zio)
-    def pure[T, R](value: => T): Result[R, T] =
-      PureResult(_ => value)
+
+    def zio[R, T](zio: RIO[R, ZioResult[T]])
+                 (implicit ev: T =:!= ZIO[_, _, _], ev2: T =:!= DBIO[_]): Result[R, T] = Zio(zio)
+
+    def pure[T, R](value: => T): Result[R, T] = PureResult(_ => value)
 
   }
 
@@ -1069,15 +1054,14 @@ object DBZIO {
     type F[_, _]
 
     /** Waits for 'result' to produce a value of the [[F]] */
-    def waitFor[R, T](
-                       result: Result[R, T]
-                     )(implicit runtime: Runtime[R], ec: ExecutionContext): F[R, T]
+    def waitFor[R, T](result: Result[R, T])(implicit runtime: Runtime[R], ec: ExecutionContext): F[R, T]
   }
 
   /** Waits for `result` to produce result in specific context. */
-  private def waitFor[R, T, C <: Context](
-                                           result: Result[R, T]
-                                         )(context: C)(implicit runtime: Runtime[R], ec: ExecutionContext): C#F[R, T] = {
+  private def waitFor[R, T, C <: Context](result: Result[R, T])
+                                         (context: C)
+                                         (implicit runtime: Runtime[R],
+                                          ec: ExecutionContext): C#F[R, T] = {
     context.waitFor(result.eval)
   }
 
@@ -1085,14 +1069,16 @@ object DBZIO {
   private def waitFor[R, T, C <: Context](
                                            action: DBZIO[R, T],
                                            ti: TransactionInformation
-                                         )(context: C)(implicit runtime: Runtime[R], ec: ExecutionContext): C#F[R, T] = {
+                                         )(context: C)
+                                         (implicit runtime: Runtime[R],
+                                          ec: ExecutionContext): C#F[R, T] = {
     waitFor(evalDBZIO[R, R, T](action, ti))(context)
   }
 
   private object Context {
 
     /** Context inside [[slick.dbio.DBIO]].  */
-    case object DBIO extends Context {
+    object DBIO extends Context {
       override type F[R, T] = DBIO[T]
 
       def runZIO[R, T](zio: RIO[R, T])(implicit runtime: Runtime[R], ec: ExecutionContext): DBIO[T] = {
@@ -1102,9 +1088,9 @@ object DBZIO {
           }
       }
 
-      def waitFor[R, T](
-                         self: Result[R, T]
-                       )(implicit runtime: Runtime[R], ec: ExecutionContext): F[R, T] = {
+      def waitFor[R, T](self: Result[R, T])
+                       (implicit runtime: Runtime[R],
+                        ec: ExecutionContext): F[R, T] = {
         if (self.isError) {
           slick.dbio.DBIO.failed(self.error.get(()))
         } else if (self.isDbio) {
@@ -1119,11 +1105,10 @@ object DBZIO {
     }
 
     /** Context inside [[zio.ZIO]]. */
-    case object ZIO extends Context {
+    object ZIO extends Context {
       override type F[R, T] = RIO[R, ZioResult[T]]
-      def waitFor[R, T](
-                         result: Result[R, T]
-                       )(implicit runtime: Runtime[R], ec: ExecutionContext): F[R, T] = {
+      def waitFor[R, T](result: Result[R, T])
+                       (implicit runtime: Runtime[R], ec: ExecutionContext): F[R, T] = {
         if (result.isError) {
           wrapError(Task.fail(result.error.get(())))
         } else if (result.isPure) {
@@ -1141,27 +1126,26 @@ object DBZIO {
   implicit private val isolationOrd: Ordering[TransactionIsolation] = {
     import slick.jdbc.TransactionIsolation._
     val order: List[TransactionIsolation] = List(ReadUncommitted, ReadCommitted, RepeatableRead, Serializable)
-    new Ordering[TransactionIsolation] {
-      override def compare(x: TransactionIsolation, y: TransactionIsolation): Int = {
-        @tailrec
-        def cmp(check: List[TransactionIsolation]): Int = {
-          if (check.isEmpty) {
+    (x: TransactionIsolation, y: TransactionIsolation) => {
+      @tailrec
+      def cmp(check: List[TransactionIsolation]): Int = {
+        if (check.isEmpty) {
+          0
+        } else {
+          val head = check.head
+          if (x == head && y == head) {
             0
+          } else if (x == head) {
+            -1
+          } else if (y == head) {
+            1
           } else {
-            val head = check.head
-            if (x == head && y == head) {
-              0
-            } else if (x == head) {
-              -1
-            } else if (y == head) {
-              1
-            } else {
-              cmp(check.tail)
-            }
+            cmp(check.tail)
           }
         }
-        cmp(order)
       }
+
+      cmp(order)
     }
   }
 
