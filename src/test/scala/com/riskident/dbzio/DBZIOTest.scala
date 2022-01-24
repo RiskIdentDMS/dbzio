@@ -22,9 +22,8 @@ object DBZIOTest extends DefaultRunnableSpec {
       }
       .provideSomeLayer[Sized](Random.live)
   }
-  val countDBIO: DBIO[Int] = DataDaoZio.length.result
+  val countDBIO: DBIO[Int]     = DataDaoZio.length.result
   val countFailDBIO: DBIO[Int] = FailedDaoZio.length.result
-
 
   type TestEnv = TestEnvironment with HasDb
 
@@ -35,8 +34,8 @@ object DBZIOTest extends DefaultRunnableSpec {
       d1 <- DataDaoZio.doInsert(Data(0, "foo"))
       _ <- DBZIO(for {
         fiber <- ZIO.sleep(timeout).fork
-        _ <- TestClock.adjust(timeout)
-        _ <- fiber.join
+        _     <- TestClock.adjust(timeout)
+        _     <- fiber.join
       } yield ())
       d2 <- DataDaoZio.doInsert(Data(0, "bar"))
     } yield (d1.id, d2.id)).result
@@ -82,9 +81,9 @@ object DBZIOTest extends DefaultRunnableSpec {
     suite("transaction")(
       Seq(
         testRollback("ZIO", DBZIO(ZIO.fail(Ex()).unit)),
-      testRollback("DBIO", DBZIO(DBIO.failed(Ex()))),
-      testRollback("DBZIO", DBZIO.fail(Ex())),
-      testFailWithoutTx
+        testRollback("DBIO", DBZIO(DBIO.failed(Ex()))),
+        testRollback("DBZIO", DBZIO.fail(Ex())),
+        testFailWithoutTx
       ): _*
     ).provideSomeLayer(testLayer) @@ TestAspect.sequential
   }
@@ -92,26 +91,26 @@ object DBZIOTest extends DefaultRunnableSpec {
   val session: ZSpec[TestEnv, Throwable] = {
 
     def pinnedSession(
-                       name: String,
-                       f: DBZIO[Clock, Int] => DBZIO[Clock, Int],
-                       assertion: Assertion[Int]
-                     ): ZSpec[TestEnv, Throwable] = testM(name) {
+        name: String,
+        f: DBZIO[Clock, Int] => DBZIO[Clock, Int],
+        assertion: Assertion[Int]
+    ): ZSpec[TestEnv, Throwable] = testM(name) {
       val timeout = 1.seconds
 
       val createWriteAction: Promise[Nothing, Unit] => DBZIO[Clock, Int] = p => {
         val wait: URIO[Clock, Unit] = ZIO.sleep(timeout * 2).race(p.await)
         for {
-          d <- DataDaoZio.doInsert(Data(0, "foo"))
+          d   <- DataDaoZio.doInsert(Data(0, "foo"))
           res <- DataDaoZio.load.map(_.size)
-          _ <- DBZIO(wait)
-          _ <- DataDaoZio.delete(d.id)
+          _   <- DBZIO(wait)
+          _   <- DataDaoZio.delete(d.id)
         } yield res
       }
 
       val createCountAction: Promise[Nothing, Unit] => DBZIO[Any, Int] = p => {
         for {
           res <- DataDaoZio.load.map(_.size)
-          _ <- DBZIO(p.succeed(()))
+          _   <- DBZIO(p.succeed(()))
         } yield res
       }
       for {
@@ -120,10 +119,10 @@ object DBZIOTest extends DefaultRunnableSpec {
         count = createCountAction(p)
         writeFiber <- f(write).result.fork
         countFiber <- count.result.fork
-        _ <- TestClock.adjust(timeout).repeatN(2)
-        cnt <- writeFiber.join
-        _ <- TestClock.adjust(timeout).repeatN(2)
-        res <- countFiber.join
+        _          <- TestClock.adjust(timeout).repeatN(2)
+        cnt        <- writeFiber.join
+        _          <- TestClock.adjust(timeout).repeatN(2)
+        res        <- countFiber.join
       } yield assert(cnt)(not(equalTo(0))) && assert(res)(assertion)
     }
     // Failing in tests due to limitations of the test environment (only one thread, which is locked by pinned session).
@@ -154,7 +153,8 @@ object DBZIOTest extends DefaultRunnableSpec {
           res <- assertM(ref.get)(equalTo(true))
         } yield res && run
 
-      ZIO.foreach(failedActions)(prepare)
+      ZIO
+        .foreach(failedActions)(prepare)
         .map(r => r.tail.foldLeft(r.head)(_ && _))
     }
 
@@ -175,7 +175,6 @@ object DBZIOTest extends DefaultRunnableSpec {
     ) @@ TestAspect.sequential
   }
 
-
   val foldSuccess = Seq(
     "PureZio"     -> DBZIO(UIO(0)),
     "PureDBIO"    -> DBZIO(countDBIO),
@@ -190,11 +189,11 @@ object DBZIOTest extends DefaultRunnableSpec {
     "ZioOverDBIO" -> DBZIO(UIO(countFailDBIO))
   )
 
-
   val foldM: ZSpec[TestEnv, Throwable] = {
+    def createName(prefix: String, name: String): String = s"$prefix $name to DBZIO[HasDb, Boolean]"
     def testFoldM[T](prefix: String, expected: Boolean): (String, DBZIO[Any, T]) => ZSpec[TestEnv, Throwable] = {
       (name, action) =>
-        testM(s"$prefix $name to DBZIO[HasDb, Boolean]") {
+        testM(createName(prefix, name)) {
           val tested: DBZIO[HasDb, Boolean] = action.foldM(_ => DBZIO.success(false), _ => DBZIO.success(true))
           assertM(tested.result)(equalTo(expected))
         }
@@ -203,11 +202,12 @@ object DBZIOTest extends DefaultRunnableSpec {
     val success = foldSuccess.map(testFoldM("successful", true).tupled)
     val fail    = foldFail.map(testFoldM("failed", false).tupled)
 
+    val pureValue = testFoldM("successful", true)("PureValue", DBZIO.success(()))
+    val failure   = testFoldM("failed", false)("Failure", DBZIO.fail(new RuntimeException))
     suite("FoldM DBZIO")(
-      success ++ fail: _*
+      (pureValue +: success) ++ (failure +: fail): _*
     )
   }
-
 
   val fold: ZSpec[TestEnv, Throwable] = {
     def testFold[T](prefix: String, expected: Boolean): (String, DBZIO[Any, T]) => ZSpec[TestEnv, Throwable] = {
@@ -220,8 +220,11 @@ object DBZIOTest extends DefaultRunnableSpec {
     val success = foldSuccess.map(testFold("successful", true).tupled)
     val fail    = foldFail.map(testFold("failed", false).tupled)
 
+    val pureValue = testFold("successful", true)("PureValue", DBZIO.success(()))
+    val failure   = testFold("failed", false)("Failure", DBZIO.fail(new RuntimeException))
+
     suite("Fold DBZIO")(
-      success ++ fail: _*
+      (pureValue +: success) ++ (failure +: fail): _*
     )
   }
 
@@ -301,22 +304,22 @@ object DBZIOTest extends DefaultRunnableSpec {
       } yield a1 && assert(data.id)(not(equalTo(0)))
         && assert(newName)(equalTo(name))
         && assert(loaded)(equalTo(loadedFromZio))
-      ).result
+    ).result
   }
 
-  def spec: ZSpec[TestEnvironment, Any] = suite("DBZIO")(
-    Seq(
-      testExec,
-      session,
-      transaction,
-      collection,
-      dbzioIf,
-      nested,
-      errorProc,
-      foldM,
-      fold,
-      combined
-    ).map(_ @@ TestAspect.timeout(30.seconds) @@ TestAspect.timed): _*
-  ).provideSomeLayer(testLayer) @@ TestAspect.sequential
+  def spec: ZSpec[TestEnvironment, Any] =
+    suite("DBZIO")(
+      Seq(
+        testExec,
+        session,
+        transaction,
+        collection,
+        dbzioIf,
+        nested,
+        errorProc,
+        foldM,
+        fold,
+        combined
+      ).map(_ @@ TestAspect.timeout(30.seconds) @@ TestAspect.timed): _*
+    ).provideSomeLayer(testLayer) @@ TestAspect.sequential
 }
-

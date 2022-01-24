@@ -3,7 +3,7 @@ lazy val scala212 = "2.12.14"
 lazy val scala211 = "2.11.12"
 lazy val supportedScalaVersions = List(scala213, scala212, scala211)
 
-val zioVersion = "1.0.10"
+val zioVersion = "1.0.12"
 val catsVersion = "2.6.1"
 val catsVersion211 = "2.0.0"
 val scalaCheckVersion = "1.15.2"
