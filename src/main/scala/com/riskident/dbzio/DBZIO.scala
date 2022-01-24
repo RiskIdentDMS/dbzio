@@ -1016,18 +1016,34 @@ object DBZIO {
 
   }
 
+  /**
+    * Collects all the transformations of the `Result`s from the `DBZIO` chain.
+    * @tparam R ZIO-like dependency
+    * @tparam T Type of the final result
+    */
   private trait ResultProcessor[R, T] {
+
+    /** Starting type for the transformation chain */
     type Intermediate
+
+    /** Result type of the first transformation in the chain */
     type Next
+
     type Transform[A, B] = Result[R, A] => Result[R, B]
+
+    /** `HList` type of transformation functions (A => B :: B => C :: ... :: S => T :: HNil) */
     type Chain <: HList
+
+    /** Chain of transformation functions */
     protected val transform: Chain
+
+    /** Applicator of the chain of transformation */
     protected val folder: LeftFolder.Aux[Chain, Result[R, Intermediate], Any, Result[R, T]]
 
+    /** Prepends new transformation to the chain of transformations */
     def add[Q](f: Transform[Q, Intermediate]): ResultProcessor.Aux[R, T, Q] = {
       type N = this.Intermediate
-      val self: ResultProcessor.Aux[R, T, N]            = this
-      val c: Case1.Aux[Any, Result[R, Q], Result[R, N]] = Case1(f)
+      val self: ResultProcessor.Aux[R, T, N] = this
       new ResultProcessor[R, T] {
         override type Intermediate = Q
         override type Next         = N
@@ -1043,7 +1059,8 @@ object DBZIO {
       }
     }
 
-    final def apply(res: Result[R, Intermediate])(implicit runtime: Runtime[R], ec: ExecutionContext): Result[R, T] = {
+    /** Applies the chain of transformation to the `res` */
+    def apply(res: Result[R, Intermediate]): Result[R, T] = {
       folder(transform, res)
     }
   }
