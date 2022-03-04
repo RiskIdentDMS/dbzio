@@ -2,9 +2,7 @@ package com.riskident.dbzio
 
 import com.riskident.dbzio.Aliases._
 import com.riskident.dbzio.DBZIO._
-import shapeless.ops.hlist.LeftFolder.Aux
-import shapeless.ops.hlist._
-import shapeless.{::, =:!=, HList, HNil}
+import shapeless.=:!=
 import slick.dbio._
 import slick.jdbc.JdbcBackend.Database
 import slick.jdbc.JdbcProfile
@@ -933,39 +931,36 @@ object DBZIO {
     /** Result type of the first transformation in the chain */
     type Next
 
-    type Transform[A, B] = Result[R, A] => Result[R, B]
-
-    /** `HList` type of transformation functions (A => B :: B => C :: ... :: S => T :: HNil) */
-    type Chain <: HList
+    type Transform[A, B, C] = Result[R, A] => ResultProcessor.StepResult[R, B, C]
 
     /** Chain of transformation functions */
-    protected val transform: Chain
+    protected val transform: Transform[Intermediate, Next, ResultProcessor.Aux[R, T, Next]]
 
-    /** Applicator of the chain of transformation */
-    protected val folder: LeftFolder.Aux[Chain, Result[R, Intermediate], Any, Result[R, T]]
+    @tailrec
+    private def transformChain[Q](t: ResultProcessor.Aux[R, T, Q], in: Result[R, Q]): Result[R, T] = {
+      val ResultProcessor.StepResult(next, nextTransformM) = t.transform(in)
+      if (nextTransformM.isEmpty) next.asInstanceOf[Result[R, T]]
+      else {
+        transformChain(nextTransformM.get, next)
+      }
+    }
 
     /** Prepends new transformation to the chain of transformations */
-    def add[Q](f: Transform[Q, Intermediate]): ResultProcessor.Aux[R, T, Q] = {
+    def add[Q](f: Result[R, Q] => Result[R, Intermediate]): ResultProcessor.Aux[R, T, Q] = {
       type N = this.Intermediate
       val self: ResultProcessor.Aux[R, T, N] = this
       new ResultProcessor[R, T] {
         override type Intermediate = Q
         override type Next         = N
-        override type Chain        = Transform[Intermediate, Next] :: self.Chain
 
-        override protected val folder: Aux[this.Transform[Q, N] :: self.Chain, Result[R, Q], Any, Result[R, T]] =
-          new LeftFolder[Transform[Q, N] :: self.Chain, Result[R, Q], Any] {
-            type Out = Result[R, T]
-            def apply(l: Transform[Q, N] :: self.Chain, in: Result[R, Q]): Out = self.folder(l.tail, f(in))
-          }
-
-        override protected val transform: Chain = f :: self.transform
+        override protected val transform: Transform[Intermediate, Next, ResultProcessor.Aux[R, T, N]] =
+          (a: Result[R, Q]) => ResultProcessor.StepResult(f(a), Some(self))
       }
     }
 
     /** Applies the chain of transformation to the `res` */
     def apply(res: Result[R, Intermediate]): Result[R, T] = {
-      folder(transform, res)
+      transformChain(this.asInstanceOf[ResultProcessor.Aux[R, T, Intermediate]], res)
     }
   }
 
@@ -976,12 +971,13 @@ object DBZIO {
     def empty[R, T]: ResultProcessor.Aux[R, T, T] = new ResultProcessor[R, T] {
       override type Intermediate = T
       override type Next         = T
-      override type Chain        = HNil
-      override protected val transform: Chain = HNil
 
-      override protected val folder: LeftFolder.Aux[HNil, Result[R, T], Any, Result[R, T]] = LeftFolder.hnilLeftFolder
+      override protected val transform: Transform[T, T, ResultProcessor.Aux[R, T, T]] =
+        (a: Result[R, T]) => StepResult(a, None)
 
     }
+
+    case class StepResult[R, T, L](res: Result[R, T], next: Option[L])
   }
 
   /** Waits for `DBZIO` to produce result in specific context. */

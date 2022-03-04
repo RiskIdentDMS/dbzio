@@ -327,19 +327,29 @@ object DBZIOTest extends DefaultRunnableSpec {
     action.result
   })
 
-  val stackSafeResult: ZSpec[TestEnv, Throwable] = withAspects(
-    suite("Computing result is stackSafe")(
-      testM("chain of DBIO") {
-        @tailrec
-        def chain(action: DBZIO[Any, Int], left: Int): DBZIO[Any, Int] = {
-          if (left == 0) action
-          else chain(action.flatMap(_ => DataDaoZio.count), left - 1)
-        }
+  val stackSafeResult: ZSpec[TestEnv, Throwable] = withAspects {
+    @tailrec
+    def chain(next: DBZIO[Any, Int], action: DBZIO[Any, Int], left: Int): DBZIO[Any, Int] = {
+      if (left == 0) action
+      else chain(next, action.flatMap(_ => next), left - 1)
+    }
 
-        chain(DataDaoZio.count, 16384).result.as(assertCompletes)
-      }
+    val cases: Seq[(DBZIO[Any, Int], String)] = Seq(
+      DataDaoZio.count                     -> "DBIO",
+      DBZIO(UIO(0))                        -> "ZIO",
+      DBZIO.success(0)                     -> "pure values",
+      DBZIO(UIO(DataDaoZio.length.result)) -> "ZIO over DBIO"
     )
-  )
+
+    val tests = cases.map {
+      case (action, name) =>
+        testM(s"chain of $name") {
+          chain(action, action, 16384).result.as(assertCompletes)
+        }
+    }
+
+    suite("Computing result is stack-safe")(tests: _*)
+  }
 
   override def spec: ZSpec[TestEnvironment, Any] =
     withAspects {
