@@ -158,6 +158,9 @@ sealed abstract class DBZIO[-R, +T](private[DBZIO] val tag: ActionTag) {
     */
   def result: DbRIO[R, T] = DBZIO.result(this)
 
+  /** Maps this `DBZIO` to a DBZIO of another value. */
+  def as[A](a: => A): DBZIO[R, A] = map(_ => a)
+
 }
 
 object DBZIO {
@@ -177,6 +180,12 @@ object DBZIO {
   /** Creates `DBZIO` that wraps [[ZIO]] that produces db-action ([[DBIO]]). */
   def apply[R, E <: Throwable, T](action: ZIO[R, E, DBIO[T]]): DBZIO[R, T] =
     new ZioOverDBIO(action)
+
+  /** Creates `DBZIO` that wraps a [[Some]] of a pure value. */
+  def some[A](v: => A): DBZIO[Any, Option[A]] = success(Some(v))
+
+  /** Creates `DBZIO` that wraps a [[None]]. */
+  def none[T]: DBZIO[Any, Option[T]] = success(None)
 
   /** Creates `DBZIO` that fails with provided error. */
   def fail[E <: Throwable, T](error: => E): DBZIO[Any, T] =
@@ -402,9 +411,9 @@ object DBZIO {
       /** Creates new `Collector` instance with `res` added to an appropriate collection. */
       def add(res: Result[R, T]): Collector = {
         if (res.isDbio) {
-          copy(dbios = dbios :+ (item, res.dbio.get(())), item = item + 1)
+          copy(dbios = dbios :+ (item -> res.dbio.get(())), item = item + 1)
         } else {
-          copy(zios = zios :+ (item, res.asInstanceOf[Result.Zio[R, T]]), item = item + 1)
+          copy(zios = zios :+ (item -> res.asInstanceOf[Result.Zio[R, T]]), item = item + 1)
         }
       }
     }
@@ -439,7 +448,7 @@ object DBZIO {
               .map { r =>
                 val (v, d) = r.foldLeft((Seq.empty[(Int, T)], Seq.empty[(Int, DBIO[T])])) {
                   case ((tx, dbios), el) =>
-                    el._2.foldTo(x => (tx :+ (el._1, x), dbios), x => (tx, dbios :+ (el._1, x)))
+                    el._2.foldTo(x => (tx :+ (el._1 -> x), dbios), x => (tx, dbios :+ (el._1 -> x)))
                 }
 
                 val dbios = d ++ collector.dbios
