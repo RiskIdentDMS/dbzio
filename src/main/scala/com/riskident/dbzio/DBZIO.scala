@@ -1081,11 +1081,7 @@ object DBZIO {
     }
   }
 
-  /**
-    * Given a `DBZIO` evaluates a `Result` of the action.
-    *
-    * @note Recursive and not stack safe.
-    */
+  /** Given a `DBZIO` evaluates a `Result` of the action. */
   @tailrec
   private def evalDBZIO[R, T, I](
       dbzio: DBZIO[R, I],
