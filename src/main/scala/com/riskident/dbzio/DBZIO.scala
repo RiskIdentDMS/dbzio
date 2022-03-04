@@ -18,7 +18,7 @@ import scala.reflect.ClassTag
 import scala.util.Success
 
 /**
-  * Stack-unsafe monadic type to bring together [[DBIO]] and [[ZIO]]. Wrapping either of them into `DBZIO` allows to use them
+  * Stack-safe monadic type to bring together [[DBIO]] and [[ZIO]]. Wrapping either of them into `DBZIO` allows to use them
   * together in one for-comprehension, while preserving DB-specific functionality for managing db-transactions and db-connections.
   *
   * @example {{{
