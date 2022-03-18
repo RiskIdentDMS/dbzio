@@ -351,6 +351,38 @@ object DBZIOTest extends DefaultRunnableSpec {
     suite("Computing result is stack-safe")(tests: _*)
   }
 
+  val zip = testM("zip") {
+    (for {
+      p1                     <- DBZIO(Promise.make[Any, Unit])
+      p2                     <- DBZIO(Promise.make[Any, Unit])
+      result                 <- DBZIO(p1.succeed(())).map(_ => 1) <*> DBZIO(p2.succeed(())).map(_ => 2)
+      bothEffectsAreExecuted <- DBZIO(assertM(p1.isDone && p2.isDone)(isTrue))
+      correctCombinedResult  <- DBZIO.success(assertTrue(result == (1, 2)))
+    } yield bothEffectsAreExecuted && correctCombinedResult).result
+  }
+
+  val zipRight = testM("zipRight") {
+    (for {
+      p1                     <- DBZIO(Promise.make[Any, Unit])
+      p2                     <- DBZIO(Promise.make[Any, Unit])
+      result                 <- DBZIO(p1.succeed(())).map(_ => 1) *> DBZIO(p2.succeed(())).map(_ => 2)
+      bothEffectsAreExecuted <- DBZIO(assertM(p1.isDone && p2.isDone)(isTrue))
+      correctRightResult     <- DBZIO.success(assertTrue(result == 2))
+    } yield bothEffectsAreExecuted && correctRightResult).result
+  }
+
+  val zipLeft = testM("zipLeft") {
+    (for {
+      p1                     <- DBZIO(Promise.make[Any, Unit])
+      p2                     <- DBZIO(Promise.make[Any, Unit])
+      result                 <- DBZIO(p1.succeed(())).map(_ => 1) <* DBZIO(p2.succeed(())).map(_ => 2)
+      bothEffectsAreExecuted <- DBZIO(assertM(p1.isDone && p2.isDone)(isTrue))
+      correctLeftResult      <- DBZIO.success(assertTrue(result == 1))
+    } yield bothEffectsAreExecuted && correctLeftResult).result
+  }
+
+  val zipSuite = suite("All zips")(zip, zipRight, zipLeft)
+
   override def spec: ZSpec[TestEnvironment, Any] =
     withAspects {
       suite("DBZIO")(
@@ -365,6 +397,7 @@ object DBZIOTest extends DefaultRunnableSpec {
           foldM,
           fold,
           combined,
+          zipSuite,
           stackSafeResult
         ).map(_ @@ TestAspect.timeout(30.seconds)): _*
       )

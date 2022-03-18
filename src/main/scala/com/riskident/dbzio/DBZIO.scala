@@ -156,6 +156,23 @@ sealed abstract class DBZIO[-R, +T](private[DBZIO] val tag: ActionTag) {
   /** Maps this `DBZIO` to a DBZIO of another value. */
   def as[A](a: => A): DBZIO[R, A] = map(_ => a)
 
+  /** Sequentially zip this `DBZIO` with the `other`, combining the result into a tuple */
+  def <*>[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, (T, B)] = flatMap(t => other.map((t, _)))
+
+  /** Alias of <*> */
+  def zip[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, (T, B)] = <*>(other)
+
+  /** A variant of flatMap that ignores the value produced by this `DBZIO` */
+  def *>[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, B] = flatMap(_ => other)
+
+  /** Alias of *> */
+  def zipRight[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, B] = *>(other)
+
+  /** Sequences the other `DBZIO` after this `DBZIO`, but ignores the value produced by `other` */
+  def <*[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, T] = flatMap(t => other.as(t))
+
+  /** Alias of <* */
+  def zipLeft[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, T] = <*(other)
 }
 
 object DBZIO {
