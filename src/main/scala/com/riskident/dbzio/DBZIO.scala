@@ -275,46 +275,78 @@ object DBZIO {
   /** Represents a `DBZIO` wrapped around [[ZIO]] effect, that produces a db-action ([[DBIO]]). */
   final private class ZioOverDBIO[-R, +T](val action: RIO[R, DBIO[T]]) extends DBZIO[R, T](ActionTag.ZioOverDBIO)
 
+  /** A trait to uniform postprocessing of lazy computations */
+  private trait PostProcessing[-R, A, B] extends Any { this: DBZIO[R, B] =>
+
+    def addPostProcessing[R1 <: R, Res](
+        tuple: (ResultProcessor.Aux[R1, Res, B], TransactionInformation)
+    )(
+        implicit ec: ExecutionContext,
+        runtime: Runtime[R1]
+    ): (ResultProcessor.Aux[R1, Res, A], TransactionInformation) = {
+      addProcessing(tuple._1, tuple._2)
+    }
+
+    protected def addProcessing[R1 <: R, Res](
+        processor: ResultProcessor.Aux[R1, Res, B],
+        ti: TransactionInformation
+    )(implicit ec: ExecutionContext, runtime: Runtime[R1]): (ResultProcessor.Aux[R1, Res, A], TransactionInformation)
+  }
+
   /** Represents a [[DBZIO.flatMap]] operation. */
   final private class FlatMap[-R1, -R2, A, B](val self: DBZIO[R1, A], next: A => DBZIO[R2, B])
-      extends DBZIO[R1 with R2, B](ActionTag.FlatMap) {
-    def addProcessing[R <: R1 with R2, Res](
+      extends DBZIO[R1 with R2, B](ActionTag.FlatMap)
+      with PostProcessing[R1 with R2, A, B] {
+    override protected def addProcessing[R <: R1 with R2, Res](
         processor: ResultProcessor.Aux[R, Res, B],
         ti: TransactionInformation
-    )(implicit ec: ExecutionContext, runtime: Runtime[R]): ResultProcessor.Aux[R, Res, A] = {
-      processor.add[A](_.flatMap(next, ti))
+    )(implicit ec: ExecutionContext, runtime: Runtime[R]): (ResultProcessor.Aux[R, Res, A], TransactionInformation) = {
+      processor.add[A](_.flatMap(next, ti)) -> ti
     }
   }
 
   /** Represents a [[DBZIO.mapError]] operation. */
-  final private class MapError[R, T](val self: DBZIO[R, T], errorMap: Throwable => Throwable)
-      extends DBZIO[R, T](ActionTag.MapError) {
-    def addProcessor[Res](
-        processor: ResultProcessor.Aux[R, Res, T]
-    )(implicit ec: ExecutionContext): ResultProcessor.Aux[R, Res, T] = {
-      processor.add[T](_.mapError(errorMap))
+  final private class MapError[-R, T](val self: DBZIO[R, T], errorMap: Throwable => Throwable)
+      extends DBZIO[R, T](ActionTag.MapError)
+      with PostProcessing[R, T, T] {
+    override protected def addProcessing[R1 <: R, Res](
+        processor: ResultProcessor.Aux[R1, Res, T],
+        ti: TransactionInformation
+    )(
+        implicit ec: ExecutionContext,
+        runtime: Runtime[R1]
+    ): (ResultProcessor.Aux[R1, Res, T], TransactionInformation) = {
+      processor.add[T](_.mapError(errorMap)) -> ti
     }
   }
 
   /** Represents a [[DBZIO.flatMapError]] operation. */
-  final private class FlatMapError[R, R1, T](val self: DBZIO[R, T], errorMap: Throwable => DBZIO[R1, Throwable])
-      extends DBZIO[R with R1, T](ActionTag.FlatMapError) {
-    def addProcessor[R0 <: R with R1, Res](
+  final private class FlatMapError[-R, -R1, T](val self: DBZIO[R, T], errorMap: Throwable => DBZIO[R1, Throwable])
+      extends DBZIO[R with R1, T](ActionTag.FlatMapError)
+      with PostProcessing[R with R1, T, T] {
+    override protected def addProcessing[R0 <: R with R1, Res](
         processor: ResultProcessor.Aux[R0, Res, T],
         ti: TransactionInformation
-    )(implicit ec: ExecutionContext, runtime: Runtime[R0]): ResultProcessor.Aux[R0, Res, T] = {
-      processor.add[T](_.flatMapError(errorMap, ti))
+    )(
+        implicit ec: ExecutionContext,
+        runtime: Runtime[R0]
+    ): (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
+      processor.add[T](_.flatMapError(errorMap, ti)) -> ti
     }
   }
 
   /** Represents a [[DBZIO.onError]] operation. */
   final private class OnError[R, R1 >: R, T](val self: DBZIO[R1, T], errorMap: Cause[Throwable] => DBZIO[R, Any])
-      extends DBZIO[R, T](ActionTag.OnError) {
-    def addProcessor[Res](
-        processor: ResultProcessor.Aux[R, Res, T],
+      extends DBZIO[R, T](ActionTag.OnError)
+      with PostProcessing[R, T, T] {
+    override protected def addProcessing[R0 <: R, Res](
+        processor: ResultProcessor.Aux[R0, Res, T],
         ti: TransactionInformation
-    )(implicit ec: ExecutionContext, runtime: Runtime[R]): ResultProcessor.Aux[R, Res, T] = {
-      processor.add[T](_.onError(e => errorMap(Cause.fail(e)), ti))
+    )(
+        implicit ec: ExecutionContext,
+        runtime: Runtime[R0]
+    ): (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
+      processor.add[T](_.onError(e => errorMap(Cause.fail(e)), ti)) -> ti
     }
   }
 
@@ -323,63 +355,79 @@ object DBZIO {
       val self: DBZIO[R, T],
       failure: Throwable => DBZIO[R1, B],
       success: T => DBZIO[R1, B]
-  ) extends DBZIO[R with R1, B](ActionTag.FoldM) {
-    def addProcessing[R0 <: R1 with R, Res](
+  ) extends DBZIO[R with R1, B](ActionTag.FoldM)
+      with PostProcessing[R with R1, T, B] {
+    override protected def addProcessing[R0 <: R1 with R, Res](
         processor: ResultProcessor.Aux[R0, Res, B],
         ti: TransactionInformation
-    )(implicit ec: ExecutionContext, runtime: Runtime[R0]): ResultProcessor.Aux[R0, Res, T] = {
-      processor.add[T](_.foldM(success, failure, ti))
+    )(
+        implicit ec: ExecutionContext,
+        runtime: Runtime[R0]
+    ): (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
+      processor.add[T](_.foldM(success, failure, ti)) -> ti
     }
   }
 
   /** Represents a [[DBZIO.withPinnedSession]] operation. */
-  final private class WithPinnedSession[R, T](val self: DBZIO[R, T]) extends DBZIO[R, T](ActionTag.WithPinnedSession) {
-    def addProcessing[R0 <: R, Res](
+  final private class WithPinnedSession[-R, T](val self: DBZIO[R, T])
+      extends DBZIO[R, T](ActionTag.WithPinnedSession)
+      with PostProcessing[R, T, T] {
+    override protected def addProcessing[R0 <: R, Res](
         processor: ResultProcessor.Aux[R0, Res, T],
         ti: TransactionInformation
-    ): ResultProcessor.Aux[R0, Res, T] = {
+    )(
+        implicit ec: ExecutionContext,
+        runtime: Runtime[R0]
+    ): (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
       ti match {
-        case TransactionInformation(_, _, true)  => processor
-        case TransactionInformation(_, _, false) => processor.add[T](_.mapDBIO(_.withPinnedSession))
+        case TransactionInformation(_, _, true) => processor -> ti
+        case TransactionInformation(_, _, false) =>
+          processor.add[T](_.mapDBIO(_.withPinnedSession)) -> ti.copy(inPinnedSession = true)
       }
     }
   }
 
   /** Represents a [[DBZIO.transactionally]] operation. */
-  final private class Transactionally[R, T](val self: DBZIO[R, T], profile: JdbcProfile)
-      extends DBZIO[R, T](ActionTag.Transactionally) {
-    def addProcessing[R0 <: R, Res](
+  final private class Transactionally[-R, T](val self: DBZIO[R, T], profile: JdbcProfile)
+      extends DBZIO[R, T](ActionTag.Transactionally)
+      with PostProcessing[R, T, T] {
+    override protected def addProcessing[R0 <: R, Res](
         processor: ResultProcessor.Aux[R0, Res, T],
         ti: TransactionInformation
-    ): ResultProcessor.Aux[R0, Res, T] = {
+    )(
+        implicit ec: ExecutionContext,
+        runtime: Runtime[R0]
+    ): (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
       ti match {
-        case TransactionInformation(true, _, _) => processor
+        case TransactionInformation(true, _, _) => processor -> ti
         case TransactionInformation(false, _, _) =>
           import profile.api._
-          processor.add[T](_.mapDBIO(_.transactionally))
+          processor.add[T](_.mapDBIO(_.transactionally)) -> ti.copy(inTransaction = true)
       }
     }
   }
 
   /** Represents a [[DBZIO.catchSome]] operation. */
-  final private class CatchSome[R, T](val self: DBZIO[R, T], pf: PartialFunction[Throwable, DBZIO[R, T]])
-      extends DBZIO[R, T](ActionTag.CatchSome) {
-    def addProcessor[R0 <: R, Res](
-        processor: ResultProcessor.Aux[R, Res, T],
+  final private class CatchSome[-R, T](val self: DBZIO[R, T], pf: PartialFunction[Throwable, DBZIO[R, T]])
+      extends DBZIO[R, T](ActionTag.CatchSome)
+      with PostProcessing[R, T, T] {
+    override protected def addProcessing[R0 <: R, Res](
+        processor: ResultProcessor.Aux[R0, Res, T],
         ti: TransactionInformation
-    )(implicit ec: ExecutionContext, r: Runtime[R0]): ResultProcessor.Aux[R, Res, T] = {
-      processor.add[T](_.catchSome(pf, ti))
+    )(implicit ec: ExecutionContext, r: Runtime[R0]): (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
+      processor.add[T](_.catchSome(pf, ti)) -> ti
     }
   }
 
   /** Represents a [[DBZIO.catchAll]] operation. */
-  final private class CatchAll[R, T](val self: DBZIO[R, T], f: Throwable => DBZIO[R, T])
-      extends DBZIO[R, T](ActionTag.CatchAll) {
-    def addProcessor[R0 <: R, Res](
+  final private class CatchAll[-R, T](val self: DBZIO[R, T], f: Throwable => DBZIO[R, T])
+      extends DBZIO[R, T](ActionTag.CatchAll)
+      with PostProcessing[R, T, T] {
+    override protected def addProcessing[R0 <: R, Res](
         processor: ResultProcessor.Aux[R0, Res, T],
         ti: TransactionInformation
-    )(implicit ec: ExecutionContext, r: Runtime[R0]): ResultProcessor.Aux[R0, Res, T] = {
-      processor.add[T](_.catchAll(f, ti))
+    )(implicit ec: ExecutionContext, r: Runtime[R0]): (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
+      processor.add[T](_.catchAll(f, ti)) -> ti
     }
   }
 
@@ -432,7 +480,7 @@ object DBZIO {
         ctx.lift(ev1().result)
       } else {
         def addResult(col: Collector, res: DBZIO[R, T]): Collector = {
-          col.add(evalDBZIO[R, T, T](res, ti, ctx)(ResultProcessor.empty[R, T]))
+          col.add(evalDBZIO[R, T, T](res, ctx)(ResultProcessor.empty[R, T] -> ti))
         }
 
         val collector = col.foldLeft(empty)(addResult)
@@ -479,14 +527,18 @@ object DBZIO {
   }
 
   /** Represents [[DBZIO.withTransactionIsolation]] operation. */
-  final private class WithTransactionIsolation[R, T](
+  final private class WithTransactionIsolation[-R, T](
       val self: DBZIO[R, T],
       isolation: TransactionIsolation,
       profile: JdbcProfile
-  ) extends DBZIO[R, T](ActionTag.WithTransactionIsolation) {
-    def addProcessor[R0 <: R, Res](
+  ) extends DBZIO[R, T](ActionTag.WithTransactionIsolation)
+      with PostProcessing[R, T, T] {
+    override protected def addProcessing[R0 <: R, Res](
         processor: ResultProcessor.Aux[R0, Res, T],
         ti: TransactionInformation
+    )(
+        implicit ec: ExecutionContext,
+        runtime: Runtime[R0]
     ): (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
 
       def withIsolation: (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
@@ -509,11 +561,17 @@ object DBZIO {
   }
 
   /** Represents [[DBZIO.map]] operation. */
-  final private class Map[R, T, Q](val self: DBZIO[R, T], val f: T => Q) extends DBZIO[R, Q](ActionTag.Map) {
-    def addProcessing[Res](
-        processor: ResultProcessor.Aux[R, Res, Q]
-    )(implicit ec: ExecutionContext): ResultProcessor.Aux[R, Res, T] = {
-      processor.add[T](_.map(f))
+  final private class Map[-R, T, Q](val self: DBZIO[R, T], val f: T => Q)
+      extends DBZIO[R, Q](ActionTag.Map)
+      with PostProcessing[R, T, Q] {
+    override protected def addProcessing[R0 <: R, Res](
+        processor: ResultProcessor.Aux[R0, Res, Q],
+        ti: TransactionInformation
+    )(
+        implicit ec: ExecutionContext,
+        runtime: Runtime[R0]
+    ): (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = {
+      processor.add[T](_.map(f)) -> ti
     }
   }
 
@@ -681,7 +739,7 @@ object DBZIO {
     )(implicit ec: ExecutionContext, r: Runtime[R1]): Result[R1, T2] = {
 
       def waitFor(c: Context, dbzio: DBZIO[R1, T2]): c.F[R1, T2] =
-        c.waitFor(evalDBZIO(dbzio, ti, _)(ResultProcessor.empty[R1, T2]))
+        c.waitFor(evalDBZIO(dbzio, _)(ResultProcessor.empty[R1, T2] -> ti))
 
       val mapDBIO: DBIO[T] => DBIO[T2] = _.flatMap(t => waitFor(Context.DBIO, f(t)))
 
@@ -720,7 +778,7 @@ object DBZIO {
     )(implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T] = {
 
       def waitFor(c: Context, dbzio: DBZIO[R2, Throwable]): c.F[R2, Throwable] =
-        c.waitFor(evalDBZIO(dbzio, ti, _)(ResultProcessor.empty[R2, Throwable]))
+        c.waitFor(evalDBZIO(dbzio, _)(ResultProcessor.empty[R2, Throwable] -> ti))
 
       val mapDBIO: DBIO[T] => DBIO[T] = _.asTry.flatMap {
         case util.Failure(exception) =>
@@ -749,7 +807,7 @@ object DBZIO {
     )(implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T] = {
 
       def waitFor(c: Context, dbzio: DBZIO[R2, Any]): c.F[R2, Any] =
-        c.waitFor(evalDBZIO(dbzio, ti, _)(ResultProcessor.empty[R2, Any]))
+        c.waitFor(evalDBZIO(dbzio, _)(ResultProcessor.empty[R2, Any] -> ti))
 
       val doFail: Throwable => DBIO[T] = e => DBIO.failed(wrapException(e))
 
@@ -783,7 +841,7 @@ object DBZIO {
     ): Result[R2, T2] = {
 
       def waitFor(c: Context, dbzio: DBZIO[R2, T2]): c.F[R2, T2] =
-        c.waitFor(evalDBZIO(dbzio, ti, _)(ResultProcessor.empty[R2, T2]))
+        c.waitFor(evalDBZIO(dbzio, _)(ResultProcessor.empty[R2, T2] -> ti))
 
       val foldDBIO: DBIO[T] => DBIO[T2] = _.asTry.flatMap {
         case util.Failure(exception) => waitFor(Context.DBIO, e(exception))
@@ -826,7 +884,7 @@ object DBZIO {
     )(implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T2] = {
 
       def waitFor(c: Context, dbzio: DBZIO[R2, T2]): c.F[R2, T2] =
-        c.waitFor(evalDBZIO(dbzio, ti, _)(ResultProcessor.empty[R2, T2]))
+        c.waitFor(evalDBZIO(dbzio, _)(ResultProcessor.empty[R2, T2] -> ti))
 
       val mapDBIO: DBIO[T2] => DBIO[T2] = _.asTry.flatMap {
         case util.Failure(exception) if f.isDefinedAt(exception) =>
@@ -852,7 +910,7 @@ object DBZIO {
     )(implicit ec: ExecutionContext, r: Runtime[R2]): Result[R2, T2] = {
 
       def waitFor(c: Context, dbzio: DBZIO[R2, T2]): c.F[R2, T2] =
-        c.waitFor(evalDBZIO(dbzio, ti, _)(ResultProcessor.empty[R2, T2]))
+        c.waitFor(evalDBZIO(dbzio, _)(ResultProcessor.empty[R2, T2] -> ti))
 
       val mapDBIO: DBIO[T2] => DBIO[T2] = _.asTry.flatMap {
         case util.Failure(exception) =>
@@ -988,7 +1046,7 @@ object DBZIO {
       implicit runtime: Runtime[R],
       ec: ExecutionContext
   ): C#F[R, T] = {
-    context.waitFor(evalDBZIO[R, T, T](action, ti, _)(ResultProcessor.empty[R, T]))
+    context.waitFor(evalDBZIO[R, T, T](action, _)(ResultProcessor.empty[R, T] -> ti))
   }
 
   /** Context of execution of the `Result`. May be either [[DBZIO.Context.ZIO]] or [[DBZIO.Context.DBIO]]. */
@@ -1085,88 +1143,86 @@ object DBZIO {
   @tailrec
   private def evalDBZIO[R, T, I](
       dbzio: DBZIO[R, I],
-      ti: TransactionInformation,
       ctx: Context
   )(
-      actions: ResultProcessor.Aux[R, T, I]
+      data: (ResultProcessor.Aux[R, T, I], TransactionInformation)
   )(
       implicit runtime: Runtime[R],
       ec: ExecutionContext
   ): Result[R, T] = {
     dbzio.tag match {
       case ActionTag.Failure =>
-        actions(ctx.error[Throwable, I](dbzio.asInstanceOf[Failure[Throwable]].error()))
+        data._1(ctx.error[Throwable, I](dbzio.asInstanceOf[Failure[Throwable]].error()))
 
       case ActionTag.PureValue =>
-        actions(ctx.lift(dbzio.asInstanceOf[PureValue[actions.Intermediate]].value))
+        data._1(ctx.lift(dbzio.asInstanceOf[PureValue[data._1.Intermediate]].value))
 
       case ActionTag.PureZio =>
         val res = Result.zio(
-          wrapError(dbzio.asInstanceOf[PureZio[R, Throwable, actions.Intermediate]].action.map(ZioResult(_)))
+          wrapError(dbzio.asInstanceOf[PureZio[R, Throwable, data._1.Intermediate]].action.map(ZioResult(_)))
         )
-        actions(res)
+        data._1(res)
 
       case ActionTag.PureDBIO =>
-        actions(Result.dbio(dbzio.asInstanceOf[PureDBIO[actions.Intermediate]].action()))
+        data._1(Result.dbio(dbzio.asInstanceOf[PureDBIO[data._1.Intermediate]].action()))
 
       case ActionTag.DBIOChain =>
-        actions(Result.dbio(dbzio.asInstanceOf[DBIOChain[actions.Intermediate]].action(ec)))
+        data._1(Result.dbio(dbzio.asInstanceOf[DBIOChain[data._1.Intermediate]].action(ec)))
 
       case ActionTag.ZioOverDBIO =>
         val res =
-          Result.zio(wrapError(dbzio.asInstanceOf[ZioOverDBIO[R, actions.Intermediate]].action.map(ZioResult(_))))
-        actions(res)
+          Result.zio(wrapError(dbzio.asInstanceOf[ZioOverDBIO[R, data._1.Intermediate]].action.map(ZioResult(_))))
+        data._1(res)
 
       case ActionTag.FlatMap =>
         val flatMap              = dbzio.asInstanceOf[FlatMap[R, R, Any, I]]
         val first: DBZIO[R, Any] = flatMap.self
-        evalDBZIO(first, ti, ctx)(flatMap.addProcessing(actions, ti))
+        evalDBZIO(first, ctx)(flatMap.addPostProcessing(data))
 
       case ActionTag.MapError =>
         val mapError = dbzio.asInstanceOf[MapError[R, I]]
-        evalDBZIO(mapError.self, ti, ctx)(mapError.addProcessor[T](actions))
+        evalDBZIO(mapError.self, ctx)(mapError.addPostProcessing(data))
 
       case ActionTag.FlatMapError =>
         val flatMapError = dbzio.asInstanceOf[FlatMapError[R, R, I]]
-        evalDBZIO(flatMapError.self, ti, ctx)(flatMapError.addProcessor(actions, ti))
+        evalDBZIO(flatMapError.self, ctx)(flatMapError.addPostProcessing(data))
 
       case ActionTag.OnError =>
         val onError = dbzio.asInstanceOf[OnError[R, R, I]]
-        evalDBZIO(onError.self, ti, ctx)(onError.addProcessor(actions, ti))
+        evalDBZIO(onError.self, ctx)(onError.addPostProcessing(data))
 
       case ActionTag.FoldM =>
         val fold = dbzio.asInstanceOf[FoldM[R, Any, R, I]]
 
-        evalDBZIO(fold.self, ti, ctx)(fold.addProcessing(actions, ti))
+        evalDBZIO(fold.self, ctx)(fold.addPostProcessing(data))
 
       case ActionTag.WithPinnedSession =>
         val withSession = dbzio.asInstanceOf[WithPinnedSession[R, I]]
-        evalDBZIO(withSession.self, ti.copy(inPinnedSession = true), ctx)(withSession.addProcessing(actions, ti))
+        evalDBZIO(withSession.self, ctx)(withSession.addPostProcessing(data))
 
       case ActionTag.Transactionally =>
         val tx = dbzio.asInstanceOf[Transactionally[R, I]]
-        evalDBZIO(tx.self, ti.copy(inTransaction = true), ctx)(tx.addProcessing(actions, ti))
+        evalDBZIO(tx.self, ctx)(tx.addPostProcessing(data))
 
       case ActionTag.WithTransactionIsolation =>
-        val wti                 = dbzio.asInstanceOf[WithTransactionIsolation[R, I]]
-        val (newActions, newTi) = wti.addProcessor(actions, ti)
-        evalDBZIO(wti.self, newTi, ctx)(newActions)
+        val wti = dbzio.asInstanceOf[WithTransactionIsolation[R, I]]
+        evalDBZIO(wti.self, ctx)(wti.addPostProcessing(data))
 
       case ActionTag.Map =>
         val map = dbzio.asInstanceOf[Map[R, Any, I]]
-        evalDBZIO(map.self, ti, ctx)(map.addProcessing(actions))
+        evalDBZIO(map.self, ctx)(map.addPostProcessing(data))
 
       case ActionTag.CollectAll =>
         val colAll = dbzio.asInstanceOf[CollectAll[R, Any, Iterable]]
-        actions(colAll.evalEach(ti, ctx).asInstanceOf[Result[R, I]])
+        data._1(colAll.evalEach(data._2, ctx).asInstanceOf[Result[R, I]])
 
       case ActionTag.CatchSome =>
         val catchSome = dbzio.asInstanceOf[CatchSome[R, I]]
-        evalDBZIO(catchSome.self, ti, ctx)(catchSome.addProcessor(actions, ti))
+        evalDBZIO(catchSome.self, ctx)(catchSome.addPostProcessing(data))
 
       case ActionTag.CatchAll =>
         val catchAll = dbzio.asInstanceOf[CatchAll[R, I]]
-        evalDBZIO(catchAll.self, ti, ctx)(catchAll.addProcessor(actions, ti))
+        evalDBZIO(catchAll.self, ctx)(catchAll.addPostProcessing(data))
     }
   }
 
