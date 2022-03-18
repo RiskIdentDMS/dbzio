@@ -1,5 +1,3 @@
 package com.riskident.dbzio
 
-object Implicits  extends LowPrioImplicits {
-
-}
+object Implicits  extends LowPrioImplicits

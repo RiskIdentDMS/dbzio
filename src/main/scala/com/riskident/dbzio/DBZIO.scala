@@ -8,11 +8,8 @@ import slick.jdbc.JdbcBackend.Database
 import slick.jdbc.JdbcProfile
 import zio._
 import zio.blocking.blocking
-
 import scala.annotation.tailrec
-import scala.collection.generic.CanBuild
 import scala.concurrent.ExecutionContext
-import scala.language.higherKinds
 import scala.math.Ordered.orderingToOrdered
 import scala.reflect.ClassTag
 import scala.util.Success
@@ -217,7 +214,7 @@ object DBZIO {
     */
   def collectAll[R, T, C[+Element] <: Iterable[Element]](
       col: C[DBZIO[R, T]]
-  )(implicit ev1: CanBuild[T, C[T]]): DBZIO[R, C[T]] = {
+  )(implicit ev1: CanCollect[T, C]): DBZIO[R, C[T]] = {
     new CollectAll(col)
   }
 
@@ -438,7 +435,7 @@ object DBZIO {
     * Behaves exactly as [[DBIO.seq]], in a sense that first error fails the whole batch.
     */
   final private class CollectAll[R, T, C[+Element] <: Iterable[Element]](val col: C[DBZIO[R, T]])(
-      implicit ev1: CanBuild[T, C[T]]
+      implicit ev1: CanCollect[T, C]
   ) extends DBZIO[R, C[T]](ActionTag.CollectAll) {
 
     /**
@@ -477,7 +474,7 @@ object DBZIO {
     )(implicit ec: ExecutionContext, runtime: Runtime[R]): Result[R, C[T]] = {
 
       if (col.isEmpty) {
-        ctx.lift(ev1().result)
+        ctx.lift(() => ev1.from(col).result())
       } else {
         def addResult(col: Collector, res: DBZIO[R, T]): Collector = {
           col.add(evalDBZIO[R, T, T](res, ctx)(ResultProcessor.empty[R, T] -> ti))
@@ -521,7 +518,7 @@ object DBZIO {
           )
         }
 
-        res.map { _.sortBy(_._1).foldLeft(ev1())(_ += _._2).result() }
+        res.map { _.sortBy(_._1).foldLeft(ev1.from(col))(_ += _._2).result() }
       }
     }
   }
@@ -551,10 +548,10 @@ object DBZIO {
       def self: (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = processor -> ti
 
       ti match {
-        case TransactionInformation(true, _, _)                      => self
-        case TransactionInformation(_, Some(x), _) if x >= isolation => self
-        case TransactionInformation(_, Some(x), _) if x < isolation  => withIsolation
-        case TransactionInformation(_, None, _)                      => withIsolation
+        case TransactionInformation(true, _, _)                          => self
+        case TransactionInformation(false, Some(x), _) if x >= isolation => self
+        case TransactionInformation(false, Some(x), _) if x < isolation  => withIsolation
+        case TransactionInformation(false, None, _)                      => withIsolation
       }
 
     }
@@ -620,7 +617,7 @@ object DBZIO {
     *
     * The result can be either pure value, or [[DBIO]].
     */
-  sealed private trait ZioResult[+T] {
+  sealed private[dbzio] trait ZioResult[+T] {
 
     /**
       * Creates a new `ZioResult`, that maps the final result
@@ -650,7 +647,7 @@ object DBZIO {
     def toDBIO: DBIO[T]
   }
 
-  private object ZioResult {
+  private[dbzio] object ZioResult {
 
     /** `ZioResult` that contains pure value (NOT [[DBIO]]) */
     private case class Value[T](v: T) extends ZioResult[T] {

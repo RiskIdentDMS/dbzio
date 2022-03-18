@@ -19,7 +19,7 @@ object DBTestUtils {
 
     def name = column[String]("name", O.SqlType("varchar"))
 
-    override def * = (id, name) <> ((Data.apply _).tupled, Data.unapply)
+    override def * = ((id, name)).<>((Data.apply _).tupled, Data.unapply)
 
     def nameIndex = indexWithDefaultName(name, unique = true)
   }
@@ -53,7 +53,7 @@ object DBTestUtils {
 
     def name = column[String]("name", O.SqlType("varchar"))
 
-    override def * = (id, name) <> ((Data.apply _).tupled, Data.unapply)
+    override def * = ((id, name)).<>((Data.apply _).tupled, Data.unapply)
 
     def nameIndex = indexWithDefaultName(name, unique = true)
   }

@@ -1,4 +1,5 @@
 package com.riskident.dbzio
+
 import cats.implicits._
 import cats.laws.discipline._
 import com.riskident.dbzio.DBTestUtils._
@@ -11,6 +12,7 @@ import zio.duration._
 import zio.test.Assertion._
 import zio.test._
 import zio.test.environment.TestEnvironment
+import org.scalacheck.ScalacheckShapeless._
 
 object DBZIOTestLaws extends DefaultRunnableSpec {
 
@@ -26,22 +28,22 @@ object DBZIOTestLaws extends DefaultRunnableSpec {
 
   val laws = MonadTests[DBAction].monad[Int, String, Data]
 
-  val tests: Seq[ZSpec[TestEnvironment, Any]] = laws.all.properties
-    .map {
-      case (name, prop) =>
-        testM(name) {
-          for {
-            p       <- Promise.make[Throwable, Unit]
-            runtime <- ZIO.runtime[Any]
-            callback = PromiseCallback(p, runtime)
-            params   = Parameters.default.withTestCallback(ConsoleReporter(0)).withTestCallback(callback)
-            run      = Task.effect(prop.check(params)).run
-            res1 <- assertM(run)(succeeds(anything))
-            res2 <- assertM(p.await.run)(succeeds(anything))
-          } yield res1 && res2
-        }
-    }
-    .map(_ @@ TestAspect.timed @@ TestAspect.timeout(30.seconds))
+  val tests: Seq[ZSpec[TestEnvironment, Throwable]] = laws.all.properties.map {
+    case (name, prop) =>
+      val t: ZSpec[TestEnvironment, Throwable] = testM(name) {
+        for {
+          p       <- Promise.make[Throwable, Unit]
+          runtime <- ZIO.runtime[Any]
+          callback = PromiseCallback(p, runtime)
+          params   = Parameters.default.withTestCallback(ConsoleReporter(0)).withTestCallback(callback)
+          run      = Task.effect(prop.check(params)).run
+          res1 <- assertM(run)(succeeds(anything))
+          res2 <- assertM(p.await.run)(succeeds(anything))
+        } yield res1 && res2
+      } @@ TestAspect.timed @@ TestAspect.timeout(30.seconds)
+
+      t
+  }.toSeq
 
   def spec: ZSpec[TestEnvironment, Any] = suite("DBZIO monad")(tests: _*)
 }
