@@ -1,46 +1,60 @@
-lazy val scala213 = "2.13.5"
-lazy val scala212 = "2.12.14"
-lazy val scala211 = "2.11.12"
-lazy val supportedScalaVersions = List(scala213, scala212, scala211)
-
-val zioVersion = "1.0.10"
-val catsVersion = "2.6.1"
-val catsVersion211 = "2.0.0"
-val scalaCheckVersion = "1.15.2"
-
-val slickVersion = "3.3.3"
+lazy val supportedScalaVersions = List(Version.scala213, Version.scala212)
 
 ThisBuild / version := "0.1.0-SNAPSHOT"
 ThisBuild / organization := "com.riskdient"
 ThisBuild / organizationName := "DBZIO"
 
+def createScalacOptions(version: String, unusedImport: Boolean): List[String] = {
+  val base = List(
+    "-explaintypes",
+    "-feature",
+    "-Xlint",
+    "-Ywarn-macros:after",
+    "-unchecked",
+    "-encoding",
+    "UTF-8",
+    "-deprecation",
+    "-Wconf:" + List(
+      "cat=deprecation:ws",
+      "cat=feature:ws",
+      "cat=unused-params:s",
+      "cat=unused-pat-vars:e",
+      "cat=unused-privates:s",
+      "cat=unused-locals:s",
+      "cat=unused-nowarn:s",
+      "src=src_managed/.*:s",
+      s"cat=unused-imports:${if (unusedImport) "e" else "s"}"
+    ).mkString(",")
+  )
+
+  CrossVersion.partialVersion(version) match {
+    case Some((2, 12)) => base :+ "-Ypartial-unification"
+    case _             => base
+  }
+}
+
 lazy val root = (project in file("."))
   .settings(
     name := "dbzio",
     crossScalaVersions := supportedScalaVersions,
-    libraryDependencies ++= {
-      CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, 11)) => Seq(
-          "org.typelevel" %% "cats-core" % catsVersion211 % Test,
-          "org.typelevel" %% "cats-laws" % catsVersion211 % Test
-        )
-        case _ => Seq(
-          "org.typelevel" %% "cats-core" % catsVersion % Test,
-          "org.typelevel" %% "cats-laws" % catsVersion % Test
-        )
-      }
-    } ++ Seq(
-      "com.typesafe.slick" %% "slick" % slickVersion,
-      "com.typesafe.slick" %% "slick-hikaricp" % slickVersion % Test,
-      "com.h2database" % "h2" % "1.4.200" % Test,
-      "com.chuusai" %% "shapeless" % "2.3.3",
-      "org.slf4j" % "slf4j-nop" % "1.7.26" % Test,
-      "dev.zio" %% "zio" % zioVersion,
-      "dev.zio" %% "zio-test" % zioVersion % Test,
-      "dev.zio" %% "zio-test-sbt" % zioVersion % Test,
-      "org.scalacheck" %% "scalacheck" % scalaCheckVersion % Test,
-      "com.github.alexarchambault" %% "scalacheck-shapeless_1.14" % "1.2.3" % Test
+    libraryDependencies ++= Seq(
+      "com.typesafe.slick"         %% "slick"                     % Version.slick,
+      "com.chuusai"                %% "shapeless"                 % Version.shapeless,
+      "dev.zio"                    %% "zio"                       % Version.zio,
+      "org.scala-lang"             % "scala-reflect"              % scalaVersion.value,
+      "com.h2database"             % "h2"                         % Version.h2 % Test,
+      "org.slf4j"                  % "slf4j-nop"                  % Version.slf4j % Test,
+      "com.typesafe.slick"         %% "slick-hikaricp"            % Version.slick % Test,
+      "dev.zio"                    %% "zio-test"                  % Version.zio % Test,
+      "dev.zio"                    %% "zio-test-sbt"              % Version.zio % Test,
+      "org.scalacheck"             %% "scalacheck"                % Version.scalaCheck % Test,
+      "org.typelevel"              %% "cats-core"                 % Version.cats % Test,
+      "org.typelevel"              %% "cats-laws"                 % Version.cats % Test,
+      "com.github.alexarchambault" %% "scalacheck-shapeless_1.15" % Version.shapelessCheck % Test
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
-    Test / fork := true
+    Test / fork := true,
+    scalacOptions := createScalacOptions(scalaVersion.value, true),
+    Compile / console / scalacOptions := createScalacOptions(scalaVersion.value, false),
+    Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )

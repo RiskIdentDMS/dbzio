@@ -1,6 +1,5 @@
 package com.riskident.dbzio
 
-
 import slick.ast.{BaseTypedType, ColumnOption, OptionTypedType, Type}
 import slick.dbio.DBIO
 import slick.jdbc.JdbcType
@@ -13,8 +12,7 @@ import zio.{RIO, ZIO}
 import scala.concurrent.ExecutionContext
 import scala.util.Try
 
-abstract class BaseTableQuery[T, E <: BaseTable[T]](cons: Tag => E)
-  extends TableQuery(cons) {
+abstract class BaseTableQuery[T, E <: BaseTable[T]](cons: Tag => E) extends TableQuery(cons) {
 
   val cols: E = this.baseTableRow
 
@@ -26,25 +24,27 @@ abstract class BaseTableQuery[T, E <: BaseTable[T]](cons: Tag => E)
 
   def extract(col: E => Rep[_]): Rep[_] = col(this.baseTableRow)
 
-  val createTableDBIO: ExecutionContext => DBIO[Boolean] = implicit ec => {
-    for {
-      exists <- sql"SELECT COUNT(*) > 0 as f FROM information_schema.tables where table_name = '#$tableName'"
-        .as[Boolean]
-        .head
-      _ <- if (exists) {
-        DBIO.successful(())
-      } else {
-        DBIO.sequence(this.schema.create +: allAdditionalDDLStatements.map(s => sqlu"#$s"))
-      }
-    } yield exists
-  }.withPinnedSession
+  val createTableDBIO: ExecutionContext => DBIO[Boolean] = implicit ec =>
+    {
+      for {
+        exists <- sql"SELECT COUNT(*) > 0 as f FROM information_schema.tables where table_name = '#$tableName'"
+          .as[Boolean]
+          .head
+        _ <- if (exists) {
+          DBIO.successful(())
+        } else {
+          DBIO.sequence(this.schema.create +: allAdditionalDDLStatements.map(s => sqlu"#$s"))
+        }
+      } yield exists
+    }.withPinnedSession
 
   lazy val allAdditionalDDLStatements: Seq[String] =
     cols.additionalDDLStatements ++ cols.statementsForIndexesWithLikeSupport
 
   val dropTableDBIO: DBIO[Int] = sqlu"""drop table if exists #$tableName cascade"""
   val dropTable: RIO[HasDb, Unit] = ZIO
-    .service[Database].flatMap { db => ZIO.fromFuture(_ => db.run(dropTableDBIO)) }
+    .service[Database]
+    .flatMap { db => ZIO.fromFuture(_ => db.run(dropTableDBIO)) }
     .unit
 
   def allCols(tableAlias: String): String = cols(cols.*, tableAlias)
@@ -94,7 +94,7 @@ object BaseTableQuery {
     extractType(options) match {
       case Some(t) => t
       case _ =>
-        tpe match {
+        (tpe: @unchecked) match {
           case o: OptionTypedType[_] => o.elementType.asInstanceOf[JdbcType[_]].sqlTypeName(None)
           case j: BaseColumnType[_]  => j.sqlTypeName(None)
         }
@@ -121,7 +121,7 @@ object BaseTableQuery {
     }
 
     def insertElement[I, R](el: T, f: E => R)(
-      implicit shape: Shape[_ <: FlatShapeLevel, R, I, R]
+        implicit shape: Shape[_ <: FlatShapeLevel, R, I, R]
     ): DBZIO[Any, I] = {
       val q: Query[R, I, Seq] = this.map(f)
       DBZIO {

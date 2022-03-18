@@ -6,7 +6,7 @@ import slick.jdbc.JdbcBackend.{Database => Db}
 import slick.lifted.Tag
 import zio.blocking.Blocking
 import zio.{Tag => _, _}
-import zio.console.{Console, putStrLnErr}
+import zio.console.{putStrLnErr, Console}
 import zio.test.TestFailure
 import zio.test.environment.TestEnvironment
 
@@ -19,7 +19,7 @@ object DBTestUtils {
 
     def name = column[String]("name", O.SqlType("varchar"))
 
-    override def * = (id, name) <> ((Data.apply _).tupled, Data.unapply)
+    override def * = ((id, name)).<>((Data.apply _).tupled, Data.unapply)
 
     def nameIndex = indexWithDefaultName(name, unique = true)
   }
@@ -42,6 +42,10 @@ object DBTestUtils {
       this.result
     }
 
+    val count: DBZIO[Any, Int] = DBZIO {
+      this.length.result
+    }
+
   }
 
   class FailedTable(tag: Tag) extends BaseTable[Data](tag, "fail") {
@@ -49,7 +53,7 @@ object DBTestUtils {
 
     def name = column[String]("name", O.SqlType("varchar"))
 
-    override def * = (id, name) <> ((Data.apply _).tupled, Data.unapply)
+    override def * = ((id, name)).<>((Data.apply _).tupled, Data.unapply)
 
     def nameIndex = indexWithDefaultName(name, unique = true)
   }
@@ -89,22 +93,23 @@ object DBTestUtils {
       .ignore
   }
 
-  val dbLayer: RLayer[Console with Blocking, DbDependency] = ZLayer.fromManaged {
+  val dbLayer: RLayer[Blocking with Console, DbDependency] = ZLayer.fromManaged {
     for {
-      db   <- testDb
+      db <- testDb
       _ <- ZManaged.make {
         Task.fromFuture { implicit ec =>
           db.run {
             for {
               exists <- DataDaoZio.createTableDBIO(ec)
               _      <- if (exists) DataDaoZio.dropTableDBIO else DBIO.successful(())
-              res      <- DataDaoZio.createTableDBIO(ec)
+              res    <- DataDaoZio.createTableDBIO(ec)
             } yield res
           }
         }
       } { _ => DataDaoZio.dropTable.provide(Has(db)).ignore }
     } yield db
   } ++ ZLayer.identity[Blocking]
+
   val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] = dbLayer.mapError(TestFailure.fail)
 
 }
