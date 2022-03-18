@@ -10,23 +10,19 @@ def createScalacOptions(version: String, unusedImport: Boolean): List[String] = 
     "-feature",
     "-Xlint",
     "-Ywarn-macros:after",
-    "-Xlint",
     "-unchecked",
     "-encoding",
     "UTF-8",
-    "-feature",
     "-deprecation",
     "-Wconf:" + List(
       "cat=deprecation:ws",
       "cat=feature:ws",
       "cat=unused-params:s",
-      "cat=unused-pat-vars:s",
+      "cat=unused-pat-vars:e",
       "cat=unused-privates:s",
       "cat=unused-locals:s",
       "cat=unused-nowarn:s",
       "src=src_managed/.*:s",
-      "cat=unused-imports&src=target/.*:s",
-      "cat=unused-imports&src=views/.*:s",
       s"cat=unused-imports:${if (unusedImport) "e" else "s"}"
     ).mkString(",")
   )
@@ -45,6 +41,7 @@ lazy val root = (project in file("."))
       "com.typesafe.slick"         %% "slick"                     % Version.slick,
       "com.chuusai"                %% "shapeless"                 % Version.shapeless,
       "dev.zio"                    %% "zio"                       % Version.zio,
+      "org.scala-lang"             % "scala-reflect"              % scalaVersion.value,
       "com.h2database"             % "h2"                         % Version.h2 % Test,
       "org.slf4j"                  % "slf4j-nop"                  % Version.slf4j % Test,
       "com.typesafe.slick"         %% "slick-hikaricp"            % Version.slick % Test,

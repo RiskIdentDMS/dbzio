@@ -33,9 +33,8 @@ trait LowPrioImplicits {
       )
     )
 
-  implicit val eqData: Eq[Data] = new Eq[Data] {
-    override def eqv(x: Data, y: Data): Boolean = x == y
-  }
+  implicit val eqData: Eq[Data] = _ == _
+
   implicit def eqDBAction[A]: Eq[DBAction[A]] =
     (x: DBAction[A], y: DBAction[A]) =>
       zio.Runtime.default.unsafeRun {

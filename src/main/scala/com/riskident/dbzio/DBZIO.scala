@@ -547,11 +547,11 @@ object DBZIO {
 
       def self: (ResultProcessor.Aux[R0, Res, T], TransactionInformation) = processor -> ti
 
-      ti match {
-        case TransactionInformation(true, _, _)                          => self
-        case TransactionInformation(false, Some(x), _) if x >= isolation => self
-        case TransactionInformation(false, Some(x), _) if x < isolation  => withIsolation
-        case TransactionInformation(false, None, _)                      => withIsolation
+      (ti: @unchecked) match {
+        case TransactionInformation(true, _, _)                      => self
+        case TransactionInformation(_, Some(x), _) if x >= isolation => self
+        case TransactionInformation(_, Some(x), _) if x < isolation  => withIsolation
+        case TransactionInformation(_, None, _)                      => withIsolation
       }
 
     }
