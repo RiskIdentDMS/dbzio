@@ -1,13 +1,12 @@
 package com.riskident.dbzio
 
-import com.riskident.dbzio.Aliases._
 import com.riskident.dbzio.DBZIO._
 import shapeless.=:!=
 import slick.dbio._
 import slick.jdbc.JdbcBackend.Database
-import slick.jdbc.JdbcProfile
 import zio._
 import zio.blocking.blocking
+
 import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext
 import scala.math.Ordered.orderingToOrdered
@@ -15,8 +14,9 @@ import scala.reflect.ClassTag
 import scala.util.Success
 
 /**
-  * Stack-safe monadic type to bring together [[DBIO]] and [[ZIO]]. Wrapping either of them into `DBZIO` allows to use them
-  * together in one for-comprehension, while preserving DB-specific functionality for managing db-transactions and db-connections.
+  * A monadic type to bring together [[DBIO]] and [[ZIO]]. Wrapping either of them into `DBZIO` allows to use them
+  * together in one for-comprehension, while preserving DB-specific functionality for managing db-transactions and
+  * db-connections.
   *
   * @example {{{
   * val loadFromDb: DBIO[Seq[Data]]
@@ -157,22 +157,22 @@ sealed abstract class DBZIO[-R, +T](private[DBZIO] val tag: ActionTag) {
   def as[A](a: => A): DBZIO[R, A] = map(_ => a)
 
   /** Sequentially zip this `DBZIO` with the `other`, combining the result into a tuple */
-  def <*>[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, (T, B)] = flatMap(t => other.map((t, _)))
+  def <*>[R1, B](other: DBZIO[R1, B]): DBZIO[R1 with R, (T, B)] = flatMap(t => other.map((t, _)))
 
   /** Alias of <*> */
-  def zip[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, (T, B)] = <*>(other)
+  def zip[R1, B](other: DBZIO[R1, B]): DBZIO[R1 with R, (T, B)] = <*>(other)
 
   /** A variant of flatMap that ignores the value produced by this `DBZIO` */
-  def *>[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, B] = flatMap(_ => other)
+  def *>[R1, B](other: DBZIO[R1, B]): DBZIO[R1 with R, B] = flatMap(_ => other)
 
   /** Alias of *> */
-  def zipRight[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, B] = *>(other)
+  def zipRight[R1, B](other: DBZIO[R1, B]): DBZIO[R1 with R, B] = *>(other)
 
   /** Sequences the other `DBZIO` after this `DBZIO`, but ignores the value produced by `other` */
-  def <*[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, T] = flatMap(t => other.as(t))
+  def <*[R1, B](other: DBZIO[R1, B]): DBZIO[R1 with R, T] = flatMap(t => other.as(t))
 
   /** Alias of <* */
-  def zipLeft[R1 <: R, B](other: DBZIO[R1, B]): DBZIO[R1, T] = <*(other)
+  def zipLeft[R1, B](other: DBZIO[R1, B]): DBZIO[R1 with R, T] = <*(other)
 }
 
 object DBZIO {
@@ -1012,9 +1012,7 @@ object DBZIO {
     private def transformChain[Q](t: ResultProcessor.Aux[R, T, Q], in: Result[R, Q]): Result[R, T] = {
       val ResultProcessor.StepResult(next, nextTransformM) = t.transform(in)
       if (nextTransformM.isEmpty) next.asInstanceOf[Result[R, T]]
-      else {
-        transformChain(nextTransformM.get, next)
-      }
+      else transformChain(nextTransformM.get, next)
     }
 
     /** Prepends new transformation to the chain of transformations */
@@ -1123,33 +1121,6 @@ object DBZIO {
         val zio: RIO[Any, ZioResult[T]] = Task.fail(e)
         Result.zio(zio)
       }
-    }
-  }
-
-  /** It is allowed only to increase the isolation level in nested `DBZIO`, hence the [[Ordering]]. */
-  implicit private val isolationOrd: Ordering[TransactionIsolation] = {
-    import slick.jdbc.TransactionIsolation._
-    val order: List[TransactionIsolation] = List(ReadUncommitted, ReadCommitted, RepeatableRead, Serializable)
-    (x: TransactionIsolation, y: TransactionIsolation) => {
-      @tailrec
-      def cmp(check: List[TransactionIsolation]): Int = {
-        if (check.isEmpty) {
-          0
-        } else {
-          val head = check.head
-          if (x == head && y == head) {
-            0
-          } else if (x == head) {
-            -1
-          } else if (y == head) {
-            1
-          } else {
-            cmp(check.tail)
-          }
-        }
-      }
-
-      cmp(order)
     }
   }
 

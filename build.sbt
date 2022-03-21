@@ -9,11 +9,15 @@ def createScalacOptions(version: String, unusedImport: Boolean): List[String] = 
     "-explaintypes",
     "-feature",
     "-Xlint",
-    "-Ywarn-macros:after",
     "-unchecked",
     "-encoding",
     "UTF-8",
     "-deprecation",
+    "-language:higherKinds"
+  )
+
+  val wConf = List(
+    "-Ywarn-macros:after",
     "-Wconf:" + List(
       "cat=deprecation:ws",
       "cat=feature:ws",
@@ -28,8 +32,8 @@ def createScalacOptions(version: String, unusedImport: Boolean): List[String] = 
   )
 
   CrossVersion.partialVersion(version) match {
-    case Some((2, 12)) => base :+ "-Ypartial-unification"
-    case _             => base
+    case Some((2, 12)) => (base :+ "-Ypartial-unification") ++ wConf
+    case _             => base ++ wConf
   }
 }
 
@@ -47,10 +51,10 @@ lazy val root = (project in file("."))
       "com.typesafe.slick"         %% "slick-hikaricp"            % Version.slick % Test,
       "dev.zio"                    %% "zio-test"                  % Version.zio % Test,
       "dev.zio"                    %% "zio-test-sbt"              % Version.zio % Test,
+      "com.github.alexarchambault" %% "scalacheck-shapeless_1.15" % Version.shapelessCheck % Test,
       "org.scalacheck"             %% "scalacheck"                % Version.scalaCheck % Test,
       "org.typelevel"              %% "cats-core"                 % Version.cats % Test,
-      "org.typelevel"              %% "cats-laws"                 % Version.cats % Test,
-      "com.github.alexarchambault" %% "scalacheck-shapeless_1.15" % Version.shapelessCheck % Test
+      "org.typelevel"              %% "cats-laws"                 % Version.cats % Test
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     Test / fork := true,

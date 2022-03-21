@@ -357,7 +357,7 @@ object DBZIOTest extends DefaultRunnableSpec {
       p2                     <- DBZIO(Promise.make[Any, Unit])
       result                 <- DBZIO(p1.succeed(())).map(_ => 1) <*> DBZIO(p2.succeed(())).map(_ => 2)
       bothEffectsAreExecuted <- DBZIO(assertM(p1.isDone && p2.isDone)(isTrue))
-      correctCombinedResult  <- DBZIO.success(assertTrue(result == (1, 2)))
+      correctCombinedResult  <- DBZIO.success(assertTrue(result == (1 -> 2)))
     } yield bothEffectsAreExecuted && correctCombinedResult).result
   }
 
