@@ -1,4 +1,5 @@
 lazy val Version = new {
+  val dbzio         = "0.1.0-SNAPSHOT"
   lazy val scala213 = "2.13.8"
   lazy val scala212 = "2.12.15"
 
@@ -14,9 +15,9 @@ lazy val Version = new {
 
 lazy val supportedScalaVersions = List(Version.scala213, Version.scala212)
 
-ThisBuild / version := "0.1.0-SNAPSHOT"
-ThisBuild / organization := "com.riskdient"
-ThisBuild / organizationName := "DBZIO"
+ThisBuild / version := Version.dbzio
+ThisBuild / organization := "com.riskident"
+ThisBuild / organizationName := "Risk.Ident GmbH"
 
 def createScalacOptions(version: String, unusedImport: Boolean): List[String] = {
   val base = List(
