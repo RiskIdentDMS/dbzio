@@ -4,15 +4,14 @@ import cats.implicits._
 import cats.laws.discipline._
 import com.riskident.dbzio.DBTestUtils._
 import com.riskident.dbzio.Implicits._
-import org.scalacheck.Test
+import org.scalacheck.{Arbitrary, Gen, Test}
 import org.scalacheck.Test.{Parameters, TestCallback}
 import org.scalacheck.util.ConsoleReporter
-import zio.{Promise, Task, ZIO}
+import zio._
 import zio.duration._
 import zio.test.Assertion._
-import zio.test._
+import zio.test.{Gen => _, _}
 import zio.test.environment.TestEnvironment
-import org.scalacheck.ScalacheckShapeless._
 
 object DBZIOTestLaws extends DefaultRunnableSpec {
 
@@ -25,6 +24,13 @@ object DBZIOTestLaws extends DefaultRunnableSpec {
       }
     }
   }
+
+  implicit val abData: Arbitrary[Data] = Arbitrary(
+    for {
+      id   <- Gen.long.map(_.toInt)
+      name <- Gen.alphaNumStr
+    } yield Data(id, name)
+  )
 
   val laws = MonadTests[DBAction].monad[Int, String, Data]
 

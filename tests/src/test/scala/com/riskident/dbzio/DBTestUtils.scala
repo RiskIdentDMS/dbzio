@@ -1,14 +1,14 @@
 package com.riskident.dbzio
 
-import com.typesafe.config.ConfigFactory
+import com.riskident.dbzio.test.testDbLayer
 import slick.jdbc.H2Profile.api.{Database => _, _}
-import slick.jdbc.JdbcBackend.{Database => Db}
+import slick.jdbc.JdbcBackend.Database
 import slick.lifted.Tag
 import zio.blocking.Blocking
-import zio.{Tag => _, _}
-import zio.console.{putStrLnErr, Console}
+import zio.console.Console
 import zio.test.TestFailure
 import zio.test.environment.TestEnvironment
+import zio.{Tag => _, _}
 
 object DBTestUtils {
 
@@ -67,35 +67,9 @@ object DBTestUtils {
 
   }
 
-  val defaultDbConfig =
-    s"""
-       |db = {
-       |  connectionPool = "HikariCP"
-       |  jdbcUrl = "jdbc:h2:mem:"
-       |  maximumPoolSize = 1
-       |  numThreads = 1
-       |  connectionTimeout = 1s
-       |}
-       |""".stripMargin
-  val testDb: RManaged[Console, Db] = Managed.make {
+  val dbLayer: RLayer[Blocking with Console with HasDb, DbDependency] = ZLayer.fromManaged {
     for {
-      config <- ZIO.effect(
-        ConfigFactory
-          .parseString(defaultDbConfig)
-          .resolve()
-      )
-      db <- ZIO.effect(Db.forConfig(path = "db", config = config, classLoader = DBTestUtils.getClass.getClassLoader))
-    } yield db
-  } { db =>
-    ZIO
-      .effect(db.close())
-      .catchAll { t => putStrLnErr(s"Failed to close connections due to: $t") }
-      .ignore
-  }
-
-  val dbLayer: RLayer[Blocking with Console, DbDependency] = ZLayer.fromManaged {
-    for {
-      db <- testDb
+      db <- ZManaged.service[Database]
       _ <- ZManaged.make {
         Task.fromFuture { implicit ec =>
           db.run {
@@ -110,6 +84,7 @@ object DBTestUtils {
     } yield db
   } ++ ZLayer.identity[Blocking]
 
-  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] = dbLayer.mapError(TestFailure.fail)
+  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] =
+    ((testDbLayer ++ ZLayer.identity[Blocking] ++ ZLayer.identity[Console]) >>> dbLayer).mapError(TestFailure.fail)
 
 }

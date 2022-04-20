@@ -22,7 +22,7 @@ ThisBuild / organizationName := "Risk.Ident GmbH"
 
 Global / credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 Global / publishTo := {
-  val nexus = "https://nexus3.2rioffice.com/repository/dbzio2/"
+  val nexus = "https://nexus3.2rioffice.com/repository/dbzio/"
   Some("Frida snapshot repository" at nexus + (if (isSnapshot.value) "snapshots" else "releases"))
 }
 
@@ -58,31 +58,61 @@ def createScalacOptions(version: String, unusedImport: Boolean): List[String] = 
     case _             => base ++ wConf
   }
 }
+lazy val commonSettings = Seq(
+  crossScalaVersions := supportedScalaVersions,
+  libraryDependencies ++= Seq(
+    "com.typesafe.slick" %% "slick"        % Version.slick,
+    "com.chuusai"        %% "shapeless"    % Version.shapeless,
+    "dev.zio"            %% "zio"          % Version.zio,
+    "org.scala-lang"     % "scala-reflect" % scalaVersion.value
+  ),
+  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+  Test / fork := true,
+  scalacOptions := createScalacOptions(scalaVersion.value, true),
+  Compile / console / scalacOptions := createScalacOptions(scalaVersion.value, false),
+  Test / console / scalacOptions := (Compile / console / scalacOptions).value
+)
+lazy val dbzio = (project in file("dbzio"))
+  .settings(commonSettings: _*)
+  .settings(
+    name := "dbzio"
+  )
+
+lazy val test = (project in file("test"))
+  .dependsOn(dbzio)
+  .settings(commonSettings: _*)
+  .settings(
+    name := "dbzio-test",
+    libraryDependencies ++= Seq(
+      "com.h2database"     % "h2"              % Version.h2,
+      "com.typesafe.slick" %% "slick-hikaricp" % Version.slick,
+      "dev.zio"            %% "zio-test"       % Version.zio
+    )
+  )
+
+lazy val tests = (project in file("tests"))
+  .dependsOn(dbzio, test)
+  .settings(commonSettings: _*)
+  .settings(
+    publish / skip := true,
+    libraryDependencies ++= Seq(
+      "com.h2database"             % "h2"                         % Version.h2             % Test,
+      "org.slf4j"                  % "slf4j-nop"                  % Version.slf4j          % Test,
+      "com.typesafe.slick"         %% "slick-hikaricp"            % Version.slick          % Test,
+      "dev.zio"                    %% "zio-test"                  % Version.zio            % Test,
+      "dev.zio"                    %% "zio-test-sbt"              % Version.zio            % Test,
+      "com.github.alexarchambault" %% "scalacheck-shapeless_1.15" % Version.shapelessCheck % Test,
+      "org.scalacheck"             %% "scalacheck"                % Version.scalaCheck     % Test,
+      "org.typelevel"              %% "cats-core"                 % Version.cats           % Test,
+      "org.typelevel"              %% "cats-laws"                 % Version.cats           % Test
+    )
+  )
 
 lazy val root = (project in file("."))
+  .aggregate(dbzio, test, tests)
   .settings(
-    name := "dbzio",
+    publish / skip := true,
     crossScalaVersions := supportedScalaVersions,
-    libraryDependencies ++= Seq(
-      "com.typesafe.slick"         %% "slick"                     % Version.slick,
-      "com.chuusai"                %% "shapeless"                 % Version.shapeless,
-      "dev.zio"                    %% "zio"                       % Version.zio,
-      "org.scala-lang"             % "scala-reflect"              % scalaVersion.value,
-      "com.h2database"             % "h2"                         % Version.h2 % Test,
-      "org.slf4j"                  % "slf4j-nop"                  % Version.slf4j % Test,
-      "com.typesafe.slick"         %% "slick-hikaricp"            % Version.slick % Test,
-      "dev.zio"                    %% "zio-test"                  % Version.zio % Test,
-      "dev.zio"                    %% "zio-test-sbt"              % Version.zio % Test,
-      "com.github.alexarchambault" %% "scalacheck-shapeless_1.15" % Version.shapelessCheck % Test,
-      "org.scalacheck"             %% "scalacheck"                % Version.scalaCheck % Test,
-      "org.typelevel"              %% "cats-core"                 % Version.cats % Test,
-      "org.typelevel"              %% "cats-laws"                 % Version.cats % Test
-    ),
-    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
-    Test / fork := true,
-    scalacOptions := createScalacOptions(scalaVersion.value, true),
-    Compile / console / scalacOptions := createScalacOptions(scalaVersion.value, false),
-    Test / console / scalacOptions := (Compile / console / scalacOptions).value,
     // Workaround from https://www.scala-sbt.org/1.x/docs/Cross-Build.html#Note+about+sbt-release
     // don't use sbt-release's cross facility
     releaseCrossBuild := false,
