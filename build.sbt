@@ -1,5 +1,4 @@
 lazy val Version = new {
-  val dbzio         = "0.1.0-SNAPSHOT"
   lazy val scala213 = "2.13.8"
   lazy val scala212 = "2.12.15"
 
@@ -15,9 +14,20 @@ lazy val Version = new {
 
 lazy val supportedScalaVersions = List(Version.scala213, Version.scala212)
 
-ThisBuild / version := Version.dbzio
+ThisBuild / versionScheme := Some("early-semver")
+ThisBuild / version := "0.1.0"
 ThisBuild / organization := "com.riskident"
 ThisBuild / organizationName := "Risk.Ident GmbH"
+
+Global / credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
+Global / publishTo := {
+  val nexus = "https://nexus3.2rioffice.com/repository/dbzio/"
+  if (isSnapshot.value) {
+    Some("Frida snapshot repository" at nexus + "snapshots")
+  } else {
+    Some("Frida release repository" at nexus + "releases")
+  }
+}
 
 def createScalacOptions(version: String, unusedImport: Boolean): List[String] = {
   val base = List(
@@ -77,3 +87,8 @@ lazy val root = (project in file("."))
     Compile / console / scalacOptions := createScalacOptions(scalaVersion.value, false),
     Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )
+
+addCommandAlias(
+  "fmt",
+  """;eval println("Formatting source code");scalafmt;eval println("Formatting test code");Test / scalafmt;eval println("Formatting SBT files");scalafmtSbt"""
+)
