@@ -1,3 +1,5 @@
+import ReleaseTransformations._
+
 lazy val Version = new {
   lazy val scala213 = "2.13.8"
   lazy val scala212 = "2.12.15"
@@ -85,7 +87,26 @@ lazy val root = (project in file("."))
     Test / fork := true,
     scalacOptions := createScalacOptions(scalaVersion.value, true),
     Compile / console / scalacOptions := createScalacOptions(scalaVersion.value, false),
-    Test / console / scalacOptions := (Compile / console / scalacOptions).value
+    Test / console / scalacOptions := (Compile / console / scalacOptions).value,
+    // Workaround from https://www.scala-sbt.org/1.x/docs/Cross-Build.html#Note+about+sbt-release
+    // crossScalaVersions must be set to Nil on the aggregating project
+    crossScalaVersions := Nil,
+    publish / skip := true,
+    // don't use sbt-release's cross facility
+    releaseCrossBuild := false,
+    releaseProcess := Seq[ReleaseStep](
+      checkSnapshotDependencies,
+      inquireVersions,
+      runClean,
+      releaseStepCommandAndRemaining("+test"),
+      setReleaseVersion,
+      commitReleaseVersion,
+      tagRelease,
+      releaseStepCommandAndRemaining("+publish"),
+      setNextVersion,
+      commitNextVersion,
+      pushChanges
+    )
   )
 
 addCommandAlias(
