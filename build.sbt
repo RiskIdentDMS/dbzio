@@ -23,7 +23,7 @@ ThisBuild / organizationName := "Risk.Ident GmbH"
 
 Global / credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 Global / publishTo := {
-  val nexus = "https://nexus3.2rioffice.com/repository/dbzio/"
+  val nexus = "https://nexus3.2rioffice.com/repository/dbzio2/"
   if (isSnapshot.value) {
     Some("Frida snapshot repository" at nexus + "snapshots")
   } else {
