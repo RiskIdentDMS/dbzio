@@ -89,8 +89,6 @@ lazy val root = (project in file("."))
     Compile / console / scalacOptions := createScalacOptions(scalaVersion.value, false),
     Test / console / scalacOptions := (Compile / console / scalacOptions).value,
     // Workaround from https://www.scala-sbt.org/1.x/docs/Cross-Build.html#Note+about+sbt-release
-    // crossScalaVersions must be set to Nil on the aggregating project
-    crossScalaVersions := Nil,
     // don't use sbt-release's cross facility
     releaseCrossBuild := false,
     releaseProcess := Seq[ReleaseStep](
