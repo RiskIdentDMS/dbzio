@@ -17,18 +17,13 @@ lazy val Version = new {
 lazy val supportedScalaVersions = List(Version.scala213, Version.scala212)
 
 ThisBuild / versionScheme := Some("early-semver")
-ThisBuild / version := "0.1.0"
 ThisBuild / organization := "com.riskident"
 ThisBuild / organizationName := "Risk.Ident GmbH"
 
 Global / credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 Global / publishTo := {
   val nexus = "https://nexus3.2rioffice.com/repository/dbzio2/"
-  if (isSnapshot.value) {
-    Some("Frida snapshot repository" at nexus + "snapshots")
-  } else {
-    Some("Frida release repository" at nexus + "releases")
-  }
+  Some("Frida snapshot repository" at nexus + (if (isSnapshot.value) "snapshots" else "releases"))
 }
 
 def createScalacOptions(version: String, unusedImport: Boolean): List[String] = {
