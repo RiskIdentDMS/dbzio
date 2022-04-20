@@ -91,18 +91,17 @@ lazy val root = (project in file("."))
     // Workaround from https://www.scala-sbt.org/1.x/docs/Cross-Build.html#Note+about+sbt-release
     // crossScalaVersions must be set to Nil on the aggregating project
     crossScalaVersions := Nil,
-    publish / skip := true,
     // don't use sbt-release's cross facility
     releaseCrossBuild := false,
     releaseProcess := Seq[ReleaseStep](
       checkSnapshotDependencies,
       inquireVersions,
       runClean,
-      releaseStepCommandAndRemaining("+test"),
+      releaseStepCommandAndRemaining("+ test"),
       setReleaseVersion,
       commitReleaseVersion,
       tagRelease,
-      releaseStepCommandAndRemaining("+publish"),
+      releaseStepCommandAndRemaining("+ publish"),
       setNextVersion,
       commitNextVersion,
       pushChanges
