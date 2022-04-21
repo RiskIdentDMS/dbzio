@@ -3,7 +3,6 @@ package com.riskident.dbzio
 import cats.Monad
 import cats.kernel.Eq
 import com.riskident.dbzio.DBTestUtils.Data
-import com.riskident.dbzio.test.testDbLayer
 import org.scalacheck.rng.Seed
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import slick.dbio.DBIO
@@ -13,6 +12,8 @@ import zio.random.Random
 import zio.{TaskLayer, UIO, ULayer}
 
 trait LowPrioImplicits {
+
+  import DBTestUtils.testDbLayer
 
   implicit val monad: Monad[DBAction] = new Monad[DBAction] {
     override def flatMap[A, B](fa: DBAction[A])(f: A => DBAction[B]): DBAction[B] = fa.flatMap(f)

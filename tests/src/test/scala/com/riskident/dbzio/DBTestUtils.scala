@@ -1,6 +1,7 @@
 package com.riskident.dbzio
 
-import com.riskident.dbzio.test.testDbLayer
+import com.riskident.dbzio
+import com.typesafe.config.{Config, ConfigFactory}
 import slick.jdbc.H2Profile.api.{Database => _, _}
 import slick.jdbc.JdbcBackend.Database
 import slick.lifted.Tag
@@ -10,7 +11,7 @@ import zio.test.TestFailure
 import zio.test.environment.TestEnvironment
 import zio.{Tag => _, _}
 
-object DBTestUtils {
+object DBTestUtils extends dbzio.TestLayers[Config] {
 
   case class Data(id: Int, name: String)
 
@@ -87,4 +88,12 @@ object DBTestUtils {
   val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] =
     ((testDbLayer ++ ZLayer.identity[Blocking] ++ ZLayer.identity[Console]) >>> dbLayer).mapError(TestFailure.fail)
 
+  override def produceConfig(string: String): Task[Config] = Task {
+    ConfigFactory
+      .parseString(string)
+      .resolve()
+  }
+
+  override def makeDb(config: Config): Task[Database] =
+    Task(Db.forConfig(path = "db", config = config, classLoader = this.getClass.getClassLoader))
 }
