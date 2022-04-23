@@ -35,7 +35,10 @@ def createScalacOptions(version: String, unusedImport: Boolean): List[String] = 
     "-encoding",
     "UTF-8",
     "-deprecation",
-    "-language:higherKinds"
+    "-language:higherKinds",
+    "-opt-inline-from:com.riskident.**",
+    "-opt:l:method,inline",
+    "-opt-warnings:none"
   )
 
   val wConf = List(
@@ -55,11 +58,14 @@ def createScalacOptions(version: String, unusedImport: Boolean): List[String] = 
 
   CrossVersion.partialVersion(version) match {
     case Some((2, 12)) => (base :+ "-Ypartial-unification") ++ wConf
+    case Some((2, 13)) => base ++ wConf
     case _             => base ++ wConf
   }
 }
 lazy val commonSettings = Seq(
   crossScalaVersions := supportedScalaVersions,
+  addCompilerPlugin("org.scalameta" % "semanticdb-scalac" % "4.5.4" cross CrossVersion.full),
+  scalacOptions += "-Yrangepos",
   libraryDependencies ++= Seq(
     "com.typesafe.slick" %% "slick"        % Version.slick,
     "com.chuusai"        %% "shapeless"    % Version.shapeless,
