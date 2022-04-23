@@ -2,8 +2,8 @@ package com.riskident
 
 import slick.jdbc
 import slick.jdbc.JdbcBackend.Database
-import zio.{Has, RIO, URIO, ZIO}
 import zio.blocking.Blocking
+import zio.{Has, RIO, URIO, ZIO}
 
 import scala.annotation.tailrec
 
