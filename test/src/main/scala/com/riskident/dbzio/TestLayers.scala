@@ -2,8 +2,8 @@ package com.riskident.dbzio
 
 import slick.jdbc.JdbcBackend.Database
 import zio._
-import zio.console.{Console, putStrLnErr}
-import zio.random.{Random, nextUUID}
+import zio.console.{putStrLnErr, Console}
+import zio.random.{nextUUID, Random}
 
 trait TestLayers[T] {
 

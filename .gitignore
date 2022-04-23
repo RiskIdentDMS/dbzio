@@ -3,3 +3,8 @@
 .idea/
 .bsp/
 target/
+.bloop/
+.metals/
+.vscode/
+*.code-workspace
+metals.sbt

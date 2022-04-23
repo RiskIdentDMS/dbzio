@@ -4,14 +4,14 @@ import cats.implicits._
 import cats.laws.discipline._
 import com.riskident.dbzio.DBTestUtils._
 import com.riskident.dbzio.Implicits._
-import org.scalacheck.{Arbitrary, Gen, Test}
 import org.scalacheck.Test.{Parameters, TestCallback}
 import org.scalacheck.util.ConsoleReporter
+import org.scalacheck.{Arbitrary, Gen, Test}
 import zio._
 import zio.duration._
 import zio.test.Assertion._
-import zio.test.{Gen => _, _}
 import zio.test.environment.TestEnvironment
+import zio.test.{Gen => _, _}
 
 object DBZIOTestLaws extends DefaultRunnableSpec {
 

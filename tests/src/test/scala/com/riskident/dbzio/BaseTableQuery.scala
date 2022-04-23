@@ -2,9 +2,9 @@ package com.riskident.dbzio
 
 import slick.ast.{BaseTypedType, ColumnOption, OptionTypedType, Type}
 import slick.dbio.DBIO
-import slick.jdbc.JdbcType
-import slick.jdbc.JdbcBackend.Database
 import slick.jdbc.H2Profile.api.{Database => _, _}
+import slick.jdbc.JdbcBackend.Database
+import slick.jdbc.JdbcType
 import slick.lifted.ProvenShape
 import slick.sql.SqlProfile.ColumnOption.SqlType
 import zio.{RIO, ZIO}
