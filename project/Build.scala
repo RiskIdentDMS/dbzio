@@ -58,10 +58,6 @@ object Build {
   }
   lazy val commonSettings = Seq(
     crossScalaVersions := supportedScalaVersions,
-    addCompilerPlugin("org.scalameta" % "semanticdb-scalac" % "4.5.4" cross CrossVersion.full),
-    semanticdbEnabled := true, // enable SemanticDB
-    semanticdbVersion := scalafixSemanticdb.revision,
-    scalacOptions += "-Yrangepos",
     libraryDependencies ++= Seq(
       "com.typesafe.slick" %% "slick"        % Version.slick,
       "com.chuusai"        %% "shapeless"    % Version.shapeless,
@@ -72,12 +68,24 @@ object Build {
     Test / fork := true,
     scalacOptions := createScalacOptions(scalaVersion.value, true),
     Compile / console / scalacOptions := createScalacOptions(scalaVersion.value, false),
-    Test / console / scalacOptions := (Compile / console / scalacOptions).value,
-    scalafixOnCompile := true
+    Test / console / scalacOptions := (Compile / console / scalacOptions).value
   )
 
   implicit class ProjectOps(val project: Project) extends AnyVal {
-    def withScalafix: Project       = project.enablePlugins(ScalafixPlugin)
-    def withCommonSettings: Project = project.settings(commonSettings: _*)
+    def withScalafix: Project =
+      project
+        .enablePlugins(ScalafixPlugin)
+        .settings(
+          addCompilerPlugin("org.scalameta" % "semanticdb-scalac" % "4.5.4" cross CrossVersion.full),
+          semanticdbEnabled := true, // enable SemanticDB
+          semanticdbVersion := scalafixSemanticdb.revision,
+          scalacOptions += "-Yrangepos",
+          scalafixOnCompile := true
+        )
+
+    def withCommonSettings: Project =
+      project
+        .settings(commonSettings: _*)
+
   }
 }
