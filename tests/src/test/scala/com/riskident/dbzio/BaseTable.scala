@@ -1,6 +1,5 @@
 package com.riskident.dbzio
 
-
 import slick.ast._
 import slick.jdbc.H2Profile.api._
 import slick.lifted.{Index, ProvenShape, RepShape}
@@ -68,4 +67,3 @@ object BaseTable {
   }
 
 }
-

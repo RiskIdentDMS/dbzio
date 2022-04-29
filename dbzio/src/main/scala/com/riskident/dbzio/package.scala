@@ -22,6 +22,8 @@ package object dbzio {
   type JdbcProfile          = jdbc.JdbcProfile
   type TransactionIsolation = jdbc.TransactionIsolation
 
+  val Db = Database
+
   implicit private[dbzio] def ordering[T]: Ordering[(Int, DBZIO.ZioResult[T])] =
     (x: (Int, DBZIO.ZioResult[T]), y: (Int, DBZIO.ZioResult[T])) => x._1.compareTo(y._1)
 

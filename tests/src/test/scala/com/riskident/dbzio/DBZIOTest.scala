@@ -348,7 +348,7 @@ object DBZIOTest extends DefaultRunnableSpec {
         }
     }
 
-    suite("Computing result is stack-safe")(tests: _*)
+    withAspects(suite("Computing result is stack-safe")(tests: _*))
   }
 
   val zip = testM("zip") {
