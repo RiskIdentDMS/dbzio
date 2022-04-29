@@ -1,24 +1,10 @@
 import ReleaseTransformations._
-
-lazy val Version = new {
-  lazy val scala213 = "2.13.8"
-  lazy val scala212 = "2.12.15"
-
-  val h2             = "2.1.210"
-  val slf4j          = "1.7.36"
-  val zio            = "1.0.13"
-  val cats           = "2.7.0"
-  val scalaCheck     = "1.15.4"
-  val slick          = "3.3.3"
-  val shapeless      = "2.3.8"
-  val shapelessCheck = "1.3.0"
-}
-
-lazy val supportedScalaVersions = List(Version.scala213, Version.scala212)
+import Build._
 
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / organization := "com.riskident"
 ThisBuild / organizationName := "Risk.Ident GmbH"
+ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
 
 Global / credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 Global / publishTo := {
@@ -26,61 +12,13 @@ Global / publishTo := {
   Some("Frida snapshot repository" at nexus + (if (isSnapshot.value) "snapshots" else "releases"))
 }
 
-def createScalacOptions(version: String, unusedImport: Boolean): List[String] = {
-  val base = List(
-    "-explaintypes",
-    "-feature",
-    "-Xlint",
-    "-unchecked",
-    "-encoding",
-    "UTF-8",
-    "-deprecation",
-    "-language:higherKinds"
-  )
-
-  val wConf = List(
-    "-Ywarn-macros:after",
-    "-Wconf:" + List(
-      "cat=deprecation:ws",
-      "cat=feature:ws",
-      "cat=unused-params:s",
-      "cat=unused-pat-vars:e",
-      "cat=unused-privates:s",
-      "cat=unused-locals:s",
-      "cat=unused-nowarn:s",
-      "src=src_managed/.*:s",
-      s"cat=unused-imports:${if (unusedImport) "e" else "s"}"
-    ).mkString(",")
-  )
-
-  CrossVersion.partialVersion(version) match {
-    case Some((2, 12)) => (base :+ "-Ypartial-unification") ++ wConf
-    case _             => base ++ wConf
-  }
-}
-lazy val commonSettings = Seq(
-  crossScalaVersions := supportedScalaVersions,
-  libraryDependencies ++= Seq(
-    "com.typesafe.slick" %% "slick"        % Version.slick,
-    "com.chuusai"        %% "shapeless"    % Version.shapeless,
-    "dev.zio"            %% "zio"          % Version.zio,
-    "org.scala-lang"     % "scala-reflect" % scalaVersion.value
-  ),
-  testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
-  Test / fork := true,
-  scalacOptions := createScalacOptions(scalaVersion.value, true),
-  Compile / console / scalacOptions := createScalacOptions(scalaVersion.value, false),
-  Test / console / scalacOptions := (Compile / console / scalacOptions).value
-)
-lazy val dbzio = (project in file("dbzio"))
-  .settings(commonSettings: _*)
+lazy val dbzio = (project in file("dbzio")).withScalafix.withCommonSettings
   .settings(
     name := "dbzio"
   )
 
-lazy val test = (project in file("test"))
+lazy val test = (project in file("test")).withScalafix.withCommonSettings
   .dependsOn(dbzio)
-  .settings(commonSettings: _*)
   .settings(
     name := "dbzio-test",
     libraryDependencies ++= Seq(
@@ -92,7 +30,8 @@ lazy val test = (project in file("test"))
 
 lazy val tests = (project in file("tests"))
   .dependsOn(dbzio, test)
-  .settings(commonSettings: _*)
+  .withScalafix
+  .withCommonSettings
   .settings(
     publish / skip := true,
     libraryDependencies ++= Seq(
@@ -110,6 +49,7 @@ lazy val tests = (project in file("tests"))
 
 lazy val root = (project in file("."))
   .aggregate(dbzio, test, tests)
+  .withScalafix
   .settings(
     publish / skip := true,
     crossScalaVersions := supportedScalaVersions,

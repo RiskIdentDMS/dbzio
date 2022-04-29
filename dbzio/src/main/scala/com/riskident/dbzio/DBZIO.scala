@@ -177,6 +177,9 @@ sealed abstract class DBZIO[-R, +T](private[DBZIO] val tag: ActionTag) {
 
 object DBZIO {
 
+  type NotDBIO[T] = T =:!= DBIO[_]
+  type NotZIO[T]  = T =:!= ZIO[_, _, _]
+
   /** Creates `DBZIO` that wraps a pure value. */
   def success[A](v: => A): DBZIO[Any, A] = new PureValue[A](() => v)
 
@@ -187,7 +190,7 @@ object DBZIO {
   def apply[T](action: ExecutionContext => DBIO[T]): DBZIO[Any, T] = new DBIOChain(action)
 
   /** Creates `DBZIO` that wraps [[ZIO]] that returns a pure value. */
-  def apply[R, E <: Throwable, T](action: ZIO[R, E, T])(implicit ev: T =:!= DBIO[_]): DBZIO[R, T] = new PureZio(action)
+  def apply[R, E <: Throwable, T: NotDBIO](action: ZIO[R, E, T]): DBZIO[R, T] = new PureZio(action)
 
   /** Creates `DBZIO` that wraps [[ZIO]] that produces db-action ([[DBIO]]). */
   def apply[R, E <: Throwable, T](action: ZIO[R, E, DBIO[T]]): DBZIO[R, T] =
@@ -687,7 +690,7 @@ object DBZIO {
     }
 
     /** Creates pure value `ZioResult` (NOT [[DBIO]]). */
-    def apply[T](value: T)(implicit ev: T =:!= DBIO[_]): ZioResult[T] = Value(value)
+    def apply[T: NotDBIO](value: T): ZioResult[T] = Value(value)
 
     /** Creates [[DBIO]] `ZioResult`. */
     def apply[T](dbio: DBIO[T]): ZioResult[T] = Query(dbio)
@@ -986,8 +989,7 @@ object DBZIO {
 
     def dbio[T](dbio: => DBIO[T]): Result[Any, T] = PureDbio(_ => dbio)
 
-    def zio[R, T](zio: RIO[R, ZioResult[T]])(implicit ev: T =:!= ZIO[_, _, _], ev2: T =:!= DBIO[_]): Result[R, T] =
-      Zio(zio)
+    def zio[R, T: NotDBIO: NotZIO](zio: RIO[R, ZioResult[T]]): Result[R, T] = Zio(zio)
   }
 
   /**
@@ -1082,7 +1084,7 @@ object DBZIO {
     object DBIO extends Context {
       override type F[R, T] = slick.dbio.DBIO[T]
 
-      def runZIO[R, T](zio: RIO[R, T])(implicit runtime: Runtime[R], ec: ExecutionContext): DBIO[T] = {
+      def runZIO[R, T](zio: RIO[R, T])(implicit runtime: Runtime[R]): DBIO[T] = {
         slick.dbio.DBIO
           .from {
             runtime.unsafeRunToFuture(zio)
