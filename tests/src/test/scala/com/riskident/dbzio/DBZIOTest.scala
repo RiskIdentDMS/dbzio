@@ -245,20 +245,29 @@ object DBZIOTest extends DefaultRunnableSpec {
 
   val collection: ZSpec[TestEnv, Throwable] = withAspects(
     suite("collectAll")(
-      testM("collection") {
-        val count = 100
-        DBZIO
-          .collectAll {
-            (0 to count).toList.map { _ =>
-              for {
-                name <- DBZIO(genStr)
-                data <- DataDaoZio.doInsert(Data(0, name))
-              } yield assert(data.id)(isGreaterThan(0))
+      suite("collection")(
+        testM("List[DBAction[Data]]") {
+          val count = 100
+          DBZIO
+            .collectAll {
+              (0 to count).toList.map { _ =>
+                for {
+                  name <- DBZIO(genStr)
+                  data <- DataDaoZio.doInsert(Data(0, name))
+                } yield assert(data.id)(isGreaterThan(0))
+              }
             }
-          }
-          .result
-          .map(_.reduceLeft(_ && _))
-      },
+            .result
+            .map(_.reduceLeft(_ && _))
+        },
+        testM("List[DBAction[Option[Data]]") {
+          val count = 100
+          for {
+            names <- ZIO.foreach((0 to count).toList)(_ => genStr)
+            _     <- DBZIO.collectAll(names.map(DataDaoZio.find)).result
+          } yield assertCompletes
+        }
+      ),
       testM("Option[DBZIO[_, _]]") {
         for {
           name <- genStr

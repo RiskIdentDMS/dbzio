@@ -46,7 +46,10 @@ object BaseTable {
   }
 
   private def extractSelects(node: Node): ConstArray[Select] = {
-    val selects = node.children.filter(_.isInstanceOf[Select])
+    val selects = node.children.filter {
+      case _: Select => true
+      case _         => false
+    }
     if (selects.isEmpty) {
       node.children.flatMap(extractSelects)
     } else {

@@ -33,6 +33,10 @@ object DBTestUtils extends dbzio.TestLayers[Config] {
       } yield data.copy(id = id)
     }
 
+    def find(name: String): DBAction[Option[Data]] = DBZIO {
+      this.filter(_.name === name).result.headOption
+    }
+
     def loadById(id: Int): DBIO[Data] = this.filter(_.id === id).take(1).result.head
 
     def delete(id: Int): DBZIO[Any, Int] = DBZIO {
