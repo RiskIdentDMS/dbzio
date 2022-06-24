@@ -6,9 +6,6 @@ import scalafix.sbt.ScalafixPlugin.autoImport._
 object Build {
 
   lazy val Version = new {
-    lazy val scala213 = "2.13.8"
-    lazy val scala212 = "2.12.15"
-
     val h2             = "2.1.210"
     val slf4j          = "1.7.36"
     val zio            = "1.0.13"
@@ -17,9 +14,17 @@ object Build {
     val slick          = "3.3.3"
     val shapeless      = "2.3.8"
     val shapelessCheck = "1.3.0"
+
+    lazy val scala213 = List(
+      "2.13.8",
+      "2.13.7",
+      "2.13.6"
+    )
+    lazy val scala212 =
+      List("2.12.15", "2.12.14")
   }
 
-  lazy val supportedScalaVersions = List(Version.scala213, Version.scala212)
+  lazy val supportedScalaVersions = Version.scala213 ++ Version.scala212
   def createScalacOptions(version: String, unusedImport: Boolean): List[String] = {
     val base = List(
       "-explaintypes",
@@ -37,7 +42,7 @@ object Build {
 
     val wConf = List(
       "-Ywarn-macros:after",
-      "-Wconf:" + List(
+      s"-Wconf:" + List(
         "cat=deprecation:ws",
         "cat=feature:ws",
         "cat=unused-params:s",
@@ -51,9 +56,9 @@ object Build {
     )
 
     CrossVersion.partialVersion(version) match {
-      case Some((2, 12)) => (base :+ "-Ypartial-unification") ++ wConf
-      case Some((2, 13)) => base ++ wConf
-      case _             => base ++ wConf
+      case Some((2, 12)) if version.endsWith(".15") => base ++ wConf :+ "-Ypartial-unification"
+      case Some((2, 13))                            => base ++ wConf
+      case _                                        => base
     }
   }
   lazy val commonSettings = Seq(
