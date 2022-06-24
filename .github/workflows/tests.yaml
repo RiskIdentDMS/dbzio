@@ -1,4 +1,4 @@
-name: DBZIO test on push
+name: tests
 
 on:
   push:
