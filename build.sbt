@@ -53,6 +53,10 @@ lazy val root = (project in file("."))
   .settings(
     publish / skip := true,
     crossScalaVersions := supportedScalaVersions,
+    /**
+      * release settings
+      */
+    publishMavenStyle := true,
     // Workaround from https://www.scala-sbt.org/1.x/docs/Cross-Build.html#Note+about+sbt-release
     // don't use sbt-release's cross facility
     releaseCrossBuild := false,
@@ -60,6 +64,7 @@ lazy val root = (project in file("."))
       checkSnapshotDependencies,
       inquireVersions,
       runClean,
+      runTest,
       releaseStepCommandAndRemaining("+test"),
       setReleaseVersion,
       commitReleaseVersion,
