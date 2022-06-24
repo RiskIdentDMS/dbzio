@@ -21,7 +21,7 @@ object Build {
       "2.13.6"
     )
     lazy val scala212 =
-      List("2.12.13", "2.12.15", "2.12.14")
+      List("2.12.15", "2.12.14")
   }
 
   lazy val supportedScalaVersions = Version.scala213 ++ Version.scala212
