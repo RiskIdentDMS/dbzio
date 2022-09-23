@@ -11,8 +11,8 @@ object Build {
     val zio            = "2.0.2"
     val cats           = "2.7.0"
     val scalaCheck     = "1.15.4"
-    val slick          = "3.3.3"
-    val shapeless      = "2.3.8"
+    val slick          = "3.4.1"
+    val shapeless      = "2.3.10"
     val shapelessCheck = "1.3.0"
 
     lazy val scala213 = List(
