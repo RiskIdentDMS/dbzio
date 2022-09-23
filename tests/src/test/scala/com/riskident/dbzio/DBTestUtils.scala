@@ -5,10 +5,7 @@ import com.typesafe.config.{Config, ConfigFactory}
 import slick.jdbc.H2Profile.api.{Database => _, _}
 import slick.jdbc.JdbcBackend.Database
 import slick.lifted.Tag
-import zio.blocking.Blocking
-import zio.console.Console
 import zio.test.TestFailure
-import zio.test.environment.TestEnvironment
 import zio.{Tag => _, _}
 
 object DBTestUtils extends dbzio.TestLayers[Config] {
@@ -72,11 +69,11 @@ object DBTestUtils extends dbzio.TestLayers[Config] {
 
   }
 
-  val dbLayer: RLayer[Blocking with Console with HasDb, DbDependency] = ZLayer.fromManaged {
+  val dbLayer: RLayer[DbDependency, DbDependency] = ZLayer.scoped[DbDependency] {
     for {
-      db <- ZManaged.service[Database]
-      _ <- ZManaged.make {
-        Task.fromFuture { implicit ec =>
+      db <- ZIO.service[Database]
+      _ <- ZIO.acquireRelease {
+        ZIO.fromFuture { implicit ec =>
           db.run {
             for {
               exists <- DataDaoZio.createTableDBIO(ec)
@@ -85,19 +82,19 @@ object DBTestUtils extends dbzio.TestLayers[Config] {
             } yield res
           }
         }
-      } { _ => DataDaoZio.dropTable.provide(Has(db)).ignore }
+      } { _ => DataDaoZio.dropTable.ignore }
     } yield db
-  } ++ ZLayer.identity[Blocking]
+  }
 
-  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] =
-    ((testDbLayer ++ ZLayer.identity[Blocking] ++ ZLayer.identity[Console]) >>> dbLayer).mapError(TestFailure.fail)
+  val testLayer: ZLayer[Any, TestFailure[Throwable], DbDependency] =
+    (testDbLayer >>> dbLayer).mapError(TestFailure.fail)
 
-  override def produceConfig(string: String): Task[Config] = Task {
+  override def produceConfig(string: String): Task[Config] = ZIO.attempt {
     ConfigFactory
       .parseString(string)
       .resolve()
   }
 
   override def makeDb(config: Config): Task[Database] =
-    Task(Db.forConfig(path = "db", config = config, classLoader = this.getClass.getClassLoader))
+    ZIO.attempt(Db.forConfig(path = "db", config = config, classLoader = this.getClass.getClassLoader))
 }

@@ -6,20 +6,26 @@ import scalafix.sbt.ScalafixPlugin.autoImport._
 object Build {
 
   lazy val Version = new {
-    lazy val scala213 = "2.13.8"
-    lazy val scala212 = "2.12.15"
-
     val h2             = "2.1.210"
     val slf4j          = "1.7.36"
-    val zio            = "1.0.13"
+    val zio            = "2.0.2"
     val cats           = "2.7.0"
     val scalaCheck     = "1.15.4"
     val slick          = "3.3.3"
     val shapeless      = "2.3.8"
     val shapelessCheck = "1.3.0"
+
+    lazy val scala213 = List(
+      "2.13.9",
+      "2.13.8",
+      "2.13.7",
+      "2.13.6"
+    )
+    lazy val scala212 =
+      List("2.12.15", "2.12.14")
   }
 
-  lazy val supportedScalaVersions = List(Version.scala213, Version.scala212)
+  lazy val supportedScalaVersions = Version.scala213 ++ Version.scala212
   def createScalacOptions(version: String, unusedImport: Boolean): List[String] = {
     val base = List(
       "-explaintypes",
@@ -76,7 +82,7 @@ object Build {
       project
         .enablePlugins(ScalafixPlugin)
         .settings(
-          addCompilerPlugin("org.scalameta" % "semanticdb-scalac" % "4.5.4" cross CrossVersion.full),
+          addCompilerPlugin("org.scalameta" % "semanticdb-scalac" % "4.5.13" cross CrossVersion.full),
           semanticdbEnabled := true, // enable SemanticDB
           semanticdbVersion := scalafixSemanticdb.revision,
           scalacOptions += "-Yrangepos",

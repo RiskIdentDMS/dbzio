@@ -1,11 +1,11 @@
 package com.riskident.dbzio
 
 import slick.jdbc.JdbcBackend.Database
+import zio.Console.printLineError
+import zio.Random.nextUUID
 import zio._
-import zio.console.{putStrLnErr, Console}
-import zio.random.{nextUUID, Random}
 
-trait TestLayers[T] {
+abstract class TestLayers[T](implicit tag: Tag[T]) {
 
   def makeDbConfig(dbName: String): String = {
     s"""
@@ -19,29 +19,32 @@ trait TestLayers[T] {
        |""".stripMargin
   }
 
-  val randomDbConfig: URIO[Random, String] = nextUUID.map(_.toString).map(makeDbConfig)
+  val randomDbConfig: UIO[String] = nextUUID.map(_.toString).map(makeDbConfig)
 
   def produceConfig(string: String): Task[T]
 
-  def makeConfigLayer[R](makeConfigString: RIO[R, String])(implicit ev: Tag[T]): RLayer[R, Has[T]] =
+  def makeConfigLayer[R](makeConfigString: RIO[R, String]): RLayer[R, T] = ZLayer {
     makeConfigString
       .flatMap(produceConfig)
-      .toLayer
+  }
 
-  def makeConfigLayer[R](stringLayer: RLayer[R, Has[String]])(implicit ev: Tag[T]): RLayer[R, Has[T]] =
-    stringLayer >>> ZLayer.fromFunctionM(h => produceConfig(h.get))
+  def makeConfigLayer[R](stringLayer: RLayer[R, String]): RLayer[R, T] = ZLayer {
+    ZIO.serviceWithZIO[String](produceConfig).provideSome[R](stringLayer)
+  }
 
-  def randomConfigLayer(implicit ev: Tag[T]): RLayer[Random, Has[T]] = makeConfigLayer(randomDbConfig)
+  val randomConfigLayer: TaskLayer[T] = makeConfigLayer(randomDbConfig)
 
   def makeDb(config: T): Task[Database]
 
-  def testDbManaged(implicit ev: Tag[T]): RManaged[Console with Has[T], Database] =
-    Managed.make {
-      ZIO.service[T] >>= makeDb
-    } { db => Task(db.close()).catchAll { t => putStrLnErr(s"Failed to close connections due to: $t") }.ignore }
+  val testDbManaged: RIO[T with Scope, Database] =
+    ZIO.acquireRelease {
+      ZIO.service[T].flatMap(makeDb)
+    } { db =>
+      ZIO.attempt(db.close()).catchAll { t => printLineError(s"Failed to close connections due to: $t") }.ignore
+    }
 
-  def testDbLayerDep(implicit ev: Tag[T]): RLayer[Has[T] with Console, HasDb] = testDbManaged.toLayer
+  val testDbLayerDep: RLayer[T, HasDb] = ZLayer.scoped[T](testDbManaged)
 
-  def testDbLayer(implicit ev: Tag[T]): RLayer[Console with Random, HasDb] =
-    (ZLayer.identity[Console] ++ randomConfigLayer) >>> testDbLayerDep
+  val testDbLayer: TaskLayer[HasDb] =
+    randomConfigLayer.to(testDbLayerDep)
 }

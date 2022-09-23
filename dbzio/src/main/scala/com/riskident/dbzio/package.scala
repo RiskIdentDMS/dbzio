@@ -2,23 +2,22 @@ package com.riskident
 
 import slick.jdbc
 import slick.jdbc.JdbcBackend.Database
-import zio.blocking.Blocking
-import zio.{Has, RIO, URIO, ZIO}
+import zio.{RIO, URIO, ZIO}
 
 import scala.annotation.tailrec
 
 package object dbzio {
-  type HasDb = Has[Database]
+  type HasDb = Database
 
-  type DbDependency = HasDb with Blocking
-  type DBAction[T]  = DBZIO[DbDependency, T]
+  type DbDependency = Database
+  type DBAction[T]  = DBZIO[Database, T]
 
-  type DbRIO[-R, +T]        = RIO[R with DbDependency, T]
-  type DbURIO[-R, +T]       = URIO[R with DbDependency, T]
-  type DbUIO[+T]            = URIO[DbDependency, T]
-  type DbIO[+E, +T]         = ZIO[DbDependency, E, T]
-  type DbZIO[-R, +E, +T]    = ZIO[DbDependency with R, E, T]
-  type DbTask[+T]           = RIO[DbDependency, T]
+  type DbRIO[-R, +T]        = RIO[R with Database, T]
+  type DbURIO[-R, +T]       = URIO[R with Database, T]
+  type DbUIO[+T]            = URIO[Database, T]
+  type DbIO[+E, +T]         = ZIO[Database, E, T]
+  type DbZIO[-R, +E, +T]    = ZIO[Database with R, E, T]
+  type DbTask[+T]           = RIO[Database, T]
   type JdbcProfile          = jdbc.JdbcProfile
   type TransactionIsolation = jdbc.TransactionIsolation
 
