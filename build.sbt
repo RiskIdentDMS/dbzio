@@ -1,16 +1,18 @@
 import ReleaseTransformations._
 import Build._
 
+ThisBuild / name := "dbzio"
 ThisBuild / versionScheme := Some("early-semver")
-ThisBuild / organization := "com.riskident"
+ThisBuild / organization := "io.github.RiskIdentDMS"
 ThisBuild / organizationName := "Risk.Ident GmbH"
+ThisBuild / homepage := Some(url("https://github.com/RiskIdentDMS/dbzio"))
+ThisBuild / organizationHomepage := Some(url("https://github.com/RiskIdentDMS"))
+ThisBuild / description := "Monadic bridge between ZIO and DBIO"
+ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0"))
+
 ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
 
-Global / credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
-Global / publishTo := {
-  val nexus = "https://nexus3.2rioffice.com/repository/dbzio/"
-  Some("Frida snapshot repository" at nexus + (if (isSnapshot.value) "snapshots" else "releases"))
-}
+resolvers ++= Seq(Resolver.mavenLocal, Resolver.sonatypeRepo("staging"))
 
 lazy val dbzio = (project in file("dbzio")).withScalafix.withCommonSettings
   .settings(
@@ -53,6 +55,8 @@ lazy val root = (project in file("."))
   .settings(
     publish / skip := true,
     crossScalaVersions := supportedScalaVersions,
+    pgpKeyRing := Some(file("~/.gnupg/pubring.kbx")),
+    releasePublishArtifactsAction := PgpKeys.publishSigned.value,
     /**
       * release settings
       */
@@ -64,19 +68,38 @@ lazy val root = (project in file("."))
       checkSnapshotDependencies,
       inquireVersions,
       runClean,
-      runTest,
       releaseStepCommandAndRemaining("+test"),
       setReleaseVersion,
       commitReleaseVersion,
       tagRelease,
-      releaseStepCommandAndRemaining("+publish"),
+      releaseStepCommandAndRemaining("+publishSigned"),
+      releaseStepCommand("sonatypeBundleRelease"),
       setNextVersion,
       commitNextVersion,
       pushChanges
-    )
+    ),
+    releaseVcsSign := true
   )
 
-addCommandAlias(
-  "fmt",
-  """;eval println("Formatting source code");scalafmt;eval println("Formatting test code");Test / scalafmt;eval println("Formatting SBT files");scalafmtSbt"""
+// Remove all additional repository other than Maven Central from POM
+pomIncludeRepository := { _ => false }
+
+credentials += Credentials(Path.userHome / ".sbt" / "sonatype_credentials")
+
+// For all Sonatype accounts created on or after February 2021
+sonatypeCredentialHost := "s01.oss.sonatype.org"
+
+sonatypeProfileName := organization.value
+
+publishTo := sonatypePublishToBundle.value
+
+scmInfo := Some(ScmInfo(url("https://github.com/RiskIdentDMS/dbzio"), "git@github.com:RiskIdentDMS/dbzio.git"))
+
+developers := List(
+  Developer(
+    id = "SuperIzya",
+    name = "Ilya Kazovsky",
+    email = "gkazovsky@gmail.com",
+    url = url("https://github.com/SuperIzya/")
+  )
 )
