@@ -95,6 +95,8 @@ publishTo := sonatypePublishToBundle.value
 
 scmInfo := Some(ScmInfo(url("https://github.com/RiskIdentDMS/dbzio"), "git@github.com:RiskIdentDMS/dbzio.git"))
 
+usePgpKeyHex("3230CDA0740E0FE9BD77501C26D21EA52D926A0E")
+
 developers := List(
   Developer(
     id = "SuperIzya",
