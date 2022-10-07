@@ -95,7 +95,7 @@ ThisBuild / credentials += Credentials(Path.userHome / ".sbt" / "sonatype_creden
 // For all Sonatype accounts created on or after February 2021
 ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
 
-ThisBuild / sonatypeProfileName := organization.value
+ThisBuild / sonatypeProfileName := "io.github.riskidentdms"
 
 ThisBuild / scmInfo := Some(ScmInfo(url("https://github.com/RiskIdentDMS/dbzio"), "git@github.com:RiskIdentDMS/dbzio.git"))
 
