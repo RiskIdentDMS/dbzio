@@ -3,10 +3,10 @@ import Build._
 
 ThisBuild / name := "dbzio"
 ThisBuild / versionScheme := Some("early-semver")
-ThisBuild / organization := "io.github.RiskIdentDMS"
+ThisBuild / organization := "io.github.riskidentdms"
 ThisBuild / organizationName := "Risk.Ident GmbH"
-ThisBuild / homepage := Some(url("https://github.com/RiskIdentDMS/dbzio"))
-ThisBuild / organizationHomepage := Some(url("https://github.com/RiskIdentDMS"))
+ThisBuild / homepage := Some(url("https://github.com/riskidentdms/dbzio"))
+ThisBuild / organizationHomepage := Some(url("https://github.com/riskidentdms"))
 ThisBuild / description := "Monadic bridge between ZIO and DBIO"
 ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0"))
 
@@ -97,7 +97,7 @@ ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
 
 ThisBuild / sonatypeProfileName := "io.github.riskidentdms"
 
-ThisBuild / scmInfo := Some(ScmInfo(url("https://github.com/RiskIdentDMS/dbzio"), "git@github.com:RiskIdentDMS/dbzio.git"))
+ThisBuild / scmInfo := Some(ScmInfo(url("https://github.com/riskidentdms/dbzio"), "git@github.com:riskidentdms/dbzio.git"))
 
 developers := List(
   Developer(
