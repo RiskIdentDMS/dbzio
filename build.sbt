@@ -7,7 +7,7 @@ ThisBuild / organization := "io.github.RiskIdentDMS"
 ThisBuild / organizationName := "Risk.Ident GmbH"
 ThisBuild / homepage := Some(url("https://github.com/RiskIdentDMS/dbzio"))
 ThisBuild / organizationHomepage := Some(url("https://github.com/RiskIdentDMS"))
-ThisBuild / description := "Google Spreadsheets datasource for SparkSQL and DataFrames."
+ThisBuild / description := "Monadic bridge between ZIO and DBIO"
 ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0"))
 
 ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
@@ -57,7 +57,6 @@ lazy val root = (project in file("."))
     crossScalaVersions := supportedScalaVersions,
     pgpKeyRing := Some(file("~/.gnupg/pubring.kbx")),
     releasePublishArtifactsAction := PgpKeys.publishSigned.value,
-
     /**
       * release settings
       */
@@ -96,12 +95,11 @@ publishTo := sonatypePublishToBundle.value
 
 scmInfo := Some(ScmInfo(url("https://github.com/RiskIdentDMS/dbzio"), "git@github.com:RiskIdentDMS/dbzio.git"))
 
-//developers := List(
-//  Developer(
-//    id    = "kostjas",
-//    name  = "Kostya Spitsyn",
-//    email = "konstantin.spitsyn@gmail.com",
-//    url   = url("https://github.com/kostjas/")
-//  )
-//)
-
+developers := List(
+  Developer(
+    id = "SuperIzya",
+    name = "Ilya Kazovsky",
+    email = "gkazovsky@gmail.com",
+    url = url("https://github.com/SuperIzya/")
+  )
+)
