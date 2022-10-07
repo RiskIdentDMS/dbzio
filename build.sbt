@@ -12,6 +12,8 @@ ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICEN
 
 ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
 
+resolvers ++= Seq(Resolver.mavenLocal, Resolver.sonatypeRepo("staging"))
+
 lazy val dbzio = (project in file("dbzio")).withScalafix.withCommonSettings
   .settings(
     name := "dbzio"
@@ -52,6 +54,7 @@ lazy val root = (project in file("."))
   .withScalafix
   .settings(
     publish / skip := true,
+    publishTo := sonatypePublishToBundle.value,
     pgpKeyRing := Some(file("~/.gnupg/pubring.kbx")),
     crossScalaVersions := supportedScalaVersions,
     releasePublishArtifactsAction := PgpKeys.publishSigned.value,
@@ -76,8 +79,7 @@ lazy val root = (project in file("."))
       commitNextVersion,
       pushChanges
     ),
-    releaseVcsSign := true,
-    resolvers ++= Seq(Resolver.mavenLocal, Resolver.sonatypeRepo("staging"))
+    releaseVcsSign := true
   )
 
 // Remove all additional repository other than Maven Central from POM
@@ -89,8 +91,6 @@ credentials += Credentials(Path.userHome / ".sbt" / "sonatype_credentials")
 sonatypeCredentialHost := "s01.oss.sonatype.org"
 
 sonatypeProfileName := organization.value
-
-publishTo := sonatypePublishToBundle.value
 
 scmInfo := Some(ScmInfo(url("https://github.com/RiskIdentDMS/dbzio"), "git@github.com:RiskIdentDMS/dbzio.git"))
 
