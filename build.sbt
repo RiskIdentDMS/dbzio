@@ -74,9 +74,10 @@ lazy val root = (project in file("."))
       setNextVersion,
       commitNextVersion,
       pushChanges
-    ),
-    releaseVcsSign := true
+    )
   )
+
+ThisBuild / releaseVcsSign := true
 
 ThisBuild / publishMavenStyle := true
 
