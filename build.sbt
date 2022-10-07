@@ -55,7 +55,6 @@ lazy val root = (project in file("."))
   .settings(
     publish / skip := true,
     crossScalaVersions := supportedScalaVersions,
-    pgpKeyRing := Some(file("~/.gnupg/pubring.kbx")),
     usePgpKeyHex("3230CDA0740E0FE9BD77501C26D21EA52D926A0E"),
     releasePublishArtifactsAction := PgpKeys.publishSigned.value,
     /**
