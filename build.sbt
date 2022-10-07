@@ -99,11 +99,17 @@ ThisBuild / sonatypeProfileName := "io.github.riskidentdms"
 
 ThisBuild / scmInfo := Some(ScmInfo(url("https://github.com/riskidentdms/dbzio"), "git@github.com:riskidentdms/dbzio.git"))
 
-developers := List(
+ThisBuild / developers := List(
   Developer(
     id = "SuperIzya",
     name = "Ilya Kazovsky",
     email = "gkazovsky@gmail.com",
     url = url("https://github.com/SuperIzya/")
-  )
+  ),
+    Developer(
+      id    = "ri-kostya",
+      name  = "Kostya Spitsyn",
+      email = "kostyantyn@riskident.com",
+      url   = url("https://github.com/ri-kostya/")
+    )
 )
