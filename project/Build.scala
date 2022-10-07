@@ -15,13 +15,8 @@ object Build {
     val shapeless      = "2.3.8"
     val shapelessCheck = "1.3.0"
 
-    lazy val scala213 = List(
-      "2.13.8",
-      "2.13.7",
-      "2.13.6"
-    )
-    lazy val scala212 =
-      List("2.12.15", "2.12.14")
+    lazy val scala213 = List("2.13.9")
+    lazy val scala212 = List("2.12.17")
   }
 
   lazy val supportedScalaVersions = Version.scala213 ++ Version.scala212
