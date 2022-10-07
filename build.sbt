@@ -54,14 +54,10 @@ lazy val root = (project in file("."))
   .withScalafix
   .settings(
     publish / skip := true,
-    publishTo := sonatypePublishToBundle.value,
-    pgpKeyRing := Some(file("~/.gnupg/pubring.kbx")),
     crossScalaVersions := supportedScalaVersions,
-    releasePublishArtifactsAction := PgpKeys.publishSigned.value,
     /**
       * release settings
       */
-    publishMavenStyle := true,
     // Workaround from https://www.scala-sbt.org/1.x/docs/Cross-Build.html#Note+about+sbt-release
     // don't use sbt-release's cross facility
     releaseCrossBuild := false,
@@ -81,6 +77,14 @@ lazy val root = (project in file("."))
     ),
     releaseVcsSign := true
   )
+
+ThisBuild / publishMavenStyle := true
+
+ThisBuild / releasePublishArtifactsAction := PgpKeys.publishSigned.value
+
+ThisBuild / pgpKeyRing := Some(file("~/.gnupg/pubring.kbx"))
+
+ThisBuild / publishTo := sonatypePublishToBundle.value
 
 // Remove all additional repository other than Maven Central from POM
 ThisBuild / pomIncludeRepository := { _ => false }
