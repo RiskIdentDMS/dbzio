@@ -12,8 +12,6 @@ ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICEN
 
 ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
 
-resolvers ++= Seq(Resolver.mavenLocal, Resolver.sonatypeRepo("staging"))
-
 lazy val dbzio = (project in file("dbzio")).withScalafix.withCommonSettings
   .settings(
     name := "dbzio"
@@ -78,7 +76,8 @@ lazy val root = (project in file("."))
       commitNextVersion,
       pushChanges
     ),
-    releaseVcsSign := true
+    releaseVcsSign := true,
+    resolvers ++= Seq(Resolver.mavenLocal, Resolver.sonatypeRepo("staging"))
   )
 
 // Remove all additional repository other than Maven Central from POM
