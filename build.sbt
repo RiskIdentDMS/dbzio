@@ -12,7 +12,7 @@ ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICEN
 
 ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
 
-resolvers ++= Seq(Resolver.mavenLocal, Resolver.sonatypeRepo("staging"))
+ThisBuild / resolvers ++= Seq(Resolver.mavenLocal, Resolver.sonatypeRepo("staging"))
 
 lazy val dbzio = (project in file("dbzio")).withScalafix.withCommonSettings
   .settings(
@@ -83,16 +83,16 @@ lazy val root = (project in file("."))
   )
 
 // Remove all additional repository other than Maven Central from POM
-pomIncludeRepository := { _ => false }
+ThisBuild / pomIncludeRepository := { _ => false }
 
-credentials += Credentials(Path.userHome / ".sbt" / "sonatype_credentials")
+ThisBuild / credentials += Credentials(Path.userHome / ".sbt" / "sonatype_credentials")
 
 // For all Sonatype accounts created on or after February 2021
-sonatypeCredentialHost := "s01.oss.sonatype.org"
+ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
 
-sonatypeProfileName := organization.value
+ThisBuild / sonatypeProfileName := organization.value
 
-scmInfo := Some(ScmInfo(url("https://github.com/RiskIdentDMS/dbzio"), "git@github.com:RiskIdentDMS/dbzio.git"))
+ThisBuild / scmInfo := Some(ScmInfo(url("https://github.com/RiskIdentDMS/dbzio"), "git@github.com:RiskIdentDMS/dbzio.git"))
 
 developers := List(
   Developer(
