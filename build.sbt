@@ -65,7 +65,7 @@ lazy val root = (project in file("."))
       checkSnapshotDependencies,
       inquireVersions,
       runClean,
-      //releaseStepCommandAndRemaining("+test"),
+      releaseStepCommandAndRemaining("+test"),
       setReleaseVersion,
       commitReleaseVersion,
       tagRelease,
@@ -97,7 +97,9 @@ ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
 
 ThisBuild / sonatypeProfileName := "io.github.riskidentdms"
 
-ThisBuild / scmInfo := Some(ScmInfo(url("https://github.com/riskidentdms/dbzio"), "git@github.com:riskidentdms/dbzio.git"))
+ThisBuild / scmInfo := Some(
+  ScmInfo(url("https://github.com/riskidentdms/dbzio"), "git@github.com:riskidentdms/dbzio.git")
+)
 
 ThisBuild / developers := List(
   Developer(
@@ -106,10 +108,10 @@ ThisBuild / developers := List(
     email = "gkazovsky@gmail.com",
     url = url("https://github.com/SuperIzya/")
   ),
-    Developer(
-      id    = "ri-kostya",
-      name  = "Kostya Spitsyn",
-      email = "kostyantyn@riskident.com",
-      url   = url("https://github.com/ri-kostya/")
-    )
+  Developer(
+    id = "ri-kostya",
+    name = "Kostya Spitsyn",
+    email = "kostyantyn@riskident.com",
+    url = url("https://github.com/ri-kostya/")
+  )
 )
