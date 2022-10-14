@@ -1,16 +1,18 @@
 import ReleaseTransformations._
 import Build._
 
+ThisBuild / name := "dbzio"
 ThisBuild / versionScheme := Some("early-semver")
-ThisBuild / organization := "com.riskident"
+ThisBuild / organization := "io.github.riskidentdms"
 ThisBuild / organizationName := "Risk.Ident GmbH"
+ThisBuild / homepage := Some(url("https://github.com/riskidentdms/dbzio"))
+ThisBuild / organizationHomepage := Some(url("https://github.com/riskidentdms"))
+ThisBuild / description := "Monadic bridge between ZIO and DBIO"
+ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0"))
+
 ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
 
-Global / credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
-Global / publishTo := {
-  val nexus = "https://nexus3.2rioffice.com/repository/dbzio/"
-  Some("Frida snapshot repository" at nexus + (if (isSnapshot.value) "snapshots" else "releases"))
-}
+ThisBuild / resolvers ++= Seq(Resolver.mavenLocal, Resolver.sonatypeRepo("staging"))
 
 lazy val dbzio = (project in file("dbzio")).withScalafix.withCommonSettings
   .settings(
@@ -53,6 +55,9 @@ lazy val root = (project in file("."))
   .settings(
     publish / skip := true,
     crossScalaVersions := supportedScalaVersions,
+    /**
+      * release settings
+      */
     // Workaround from https://www.scala-sbt.org/1.x/docs/Cross-Build.html#Note+about+sbt-release
     // don't use sbt-release's cross facility
     releaseCrossBuild := false,
@@ -64,14 +69,49 @@ lazy val root = (project in file("."))
       setReleaseVersion,
       commitReleaseVersion,
       tagRelease,
-      releaseStepCommandAndRemaining("+publish"),
+      releaseStepCommandAndRemaining("+publishSigned"),
+      releaseStepCommand("sonatypeBundleRelease"),
       setNextVersion,
       commitNextVersion,
       pushChanges
     )
   )
 
-addCommandAlias(
-  "fmt",
-  """;eval println("Formatting source code");scalafmt;eval println("Formatting test code");Test / scalafmt;eval println("Formatting SBT files");scalafmtSbt"""
+ThisBuild / releaseVcsSign := true
+
+ThisBuild / publishMavenStyle := true
+
+ThisBuild / releasePublishArtifactsAction := PgpKeys.publishSigned.value
+
+ThisBuild / pgpKeyRing := Some(file("~/.gnupg/pubring.kbx"))
+
+ThisBuild / publishTo := sonatypePublishToBundle.value
+
+// Remove all additional repository other than Maven Central from POM
+ThisBuild / pomIncludeRepository := { _ => false }
+
+ThisBuild / credentials += Credentials(Path.userHome / ".sbt" / "sonatype_credentials")
+
+// For all Sonatype accounts created on or after February 2021
+ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
+
+ThisBuild / sonatypeProfileName := "io.github.riskidentdms"
+
+ThisBuild / scmInfo := Some(
+  ScmInfo(url("https://github.com/riskidentdms/dbzio"), "git@github.com:riskidentdms/dbzio.git")
+)
+
+ThisBuild / developers := List(
+  Developer(
+    id = "SuperIzya",
+    name = "Ilya Kazovsky",
+    email = "gkazovsky@gmail.com",
+    url = url("https://github.com/SuperIzya/")
+  ),
+  Developer(
+    id = "ri-kostya",
+    name = "Kostya Spitsyn",
+    email = "kostyantyn@riskident.com",
+    url = url("https://github.com/ri-kostya/")
+  )
 )

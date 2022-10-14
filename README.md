@@ -2,6 +2,8 @@
 DBZIO is a wrapper to combine ZIO and DBIO actions in one for-comprehension. Unlike other libraries,
 DBZIO provides possibility to run the resulting action in a context of database transaction.
 
+[![Build & Tests](https://github.com/RiskIdentDMS/dbzio/actions/workflows/tests.yaml/badge.svg?branch=master)](https://github.com/RiskIdentDMS/dbzio/actions/workflows/tests.yaml)
+
 ## Prerequisites
 
 - [AdoptOpenJDK JDK 11](https://adoptopenjdk.net/installation.html#)
@@ -11,7 +13,7 @@ DBZIO provides possibility to run the resulting action in a context of database 
 
 Add dependency to the project
 ```sbt
-libraryDependencies += "com.riskident" %% "dbzio" % <Version>, 
+libraryDependencies += "com.riskident" %% "dbzio" % <Version>
 ```
 
 In the code:
