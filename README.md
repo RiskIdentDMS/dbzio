@@ -3,6 +3,7 @@ DBZIO is a wrapper to combine ZIO and DBIO actions in one for-comprehension. Unl
 DBZIO provides possibility to run the resulting action in a context of database transaction.
 
 [![Build & Tests](https://github.com/RiskIdentDMS/dbzio/actions/workflows/tests.yaml/badge.svg?branch=master)](https://github.com/RiskIdentDMS/dbzio/actions/workflows/tests.yaml)
+[![dbzio Scala version support](https://index.scala-lang.org/riskidentdms/dbzio/dbzio/latest.svg)](https://index.scala-lang.org/riskidentdms/dbzio/dbzio)
 
 ## Prerequisites
 
