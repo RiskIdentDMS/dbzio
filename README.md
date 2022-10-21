@@ -51,3 +51,47 @@ In the example above:
 3. received data is saved in the DB
 
 The whole operation is done inside db-transaction
+
+## Using DBZIO in tests
+
+DBZIO provides a way to easily provide `DbDependency` for tests. In order to achieve it, add a dependency to the project
+
+```sbt
+libraryDependencies += "com.riskident" %% "dbzio-test" % <Version> % Test
+```
+
+And in tests add the following:
+
+```scala
+import com.riskident.dbzio
+import com.typesafe.config.{Config, ConfigFactory}
+import slick.jdbc.H2Profile.api.{Database => _, _}
+import slick.jdbc.JdbcBackend.Database
+import zio.{Tag => _, _}
+import zio.test._
+import zio.blocking.Blocking
+import zio.console.Console
+import zio.test.TestFailure
+import zio.test.environment.TestEnvironment
+
+object SomeTest extends DefaultRunnableSpec with TestLayers[Config] {
+  override def produceConfig(string: String): Task[Config] = Task {
+    ConfigFactory
+      .parseString(string)
+      .resolve()
+  }
+
+  override def makeDb(config: Config): Task[Database] =
+    Task(Db.forConfig(path = "db", config = config, classLoader = this.getClass.getClassLoader))
+
+
+  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] =
+    (testDbLayer ++ ZLayer.identity[Blocking] ++ ZLayer.identity[Console]).mapError(TestFailure.fail)
+
+  override def spec: ZSpec[TestEnvironment, Any] = suite("Some tests using db")(...).provideCustomLayer(testLayer)
+}
+
+```
+
+This will allow to use [H2](https://www.h2database.com/html/main.html) in-memory database with random name in each test,
+effectively running tests in parallel with separate databases.
