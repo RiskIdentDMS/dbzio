@@ -15,8 +15,8 @@ object Build {
     val shapeless      = "2.3.10"
     val shapelessCheck = "1.3.0"
 
-    lazy val scala213 = List("2.13.9")
-    lazy val scala212 = List("2.12.15")
+    lazy val scala213 = List("2.13.10", "2.13.9")
+    lazy val scala212 = List("2.12.15", "2.12.16", "2.12.17")
   }
 
   lazy val supportedScalaVersions = Version.scala213 ++ Version.scala212
@@ -76,7 +76,7 @@ object Build {
       project
         .enablePlugins(ScalafixPlugin)
         .settings(
-          addCompilerPlugin("org.scalameta" % "semanticdb-scalac" % "4.5.13" cross CrossVersion.full),
+          addCompilerPlugin("org.scalameta" % "semanticdb-scalac" % "4.6.0" cross CrossVersion.full),
           semanticdbEnabled := true, // enable SemanticDB
           semanticdbVersion := scalafixSemanticdb.revision,
           scalacOptions += "-Yrangepos",
