@@ -12,7 +12,7 @@ ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICEN
 
 ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
 
-ThisBuild / resolvers ++= Seq(Resolver.mavenLocal, Resolver.sonatypeRepo("staging"))
+ThisBuild / resolvers ++= Resolver.mavenLocal +: Resolver.sonatypeOssRepos("staging")
 
 lazy val dbzio = (project in file("dbzio")).withScalafix.withCommonSettings
   .settings(
