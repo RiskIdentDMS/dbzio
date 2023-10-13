@@ -1,14 +1,15 @@
 package com.riskident.dbzio
 
 import com.riskident.dbzio
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.ConfigFactory
 import slick.jdbc.H2Profile.api.{Database => _, _}
 import slick.jdbc.JdbcBackend.Database
 import slick.lifted.Tag
 import zio.test.TestFailure
 import zio.{Tag => _, _}
 
-object DBTestUtils extends dbzio.TestLayers[Config] {
+object DBTestUtils extends dbzio.TestLayers {
+  override type Config = com.typesafe.config.Config
 
   case class Data(id: Int, name: String)
 

@@ -5,11 +5,11 @@ import zio.Console.printLineError
 import zio.Random.nextUUID
 import zio._
 
-/**
-  * Provides a bunch of methods for creating a db-environment for tests
-  * @tparam T type of the DB config
-  */
-abstract class TestLayers[T](implicit tag: Tag[T]) {
+/**  Provides a bunch of methods for creating a db-environment for tests */
+trait TestLayers {
+
+  /** Type of the DB config object*/
+  type Config
 
   /**
     * Creates a string with DB config
@@ -36,12 +36,12 @@ abstract class TestLayers[T](implicit tag: Tag[T]) {
     * @param string a configuration string
     * @return a db config object
     */
-  def produceConfig(string: String): Task[T]
+  def produceConfig(string: String): Task[Config]
 
   /**
     * Creates a [[zio.Layer]] with db config object from a [[ZIO]] that produces config string
     */
-  def makeConfigLayer[R](makeConfigString: RIO[R, String]): RLayer[R, T] = ZLayer {
+  def makeConfigLayer[R](makeConfigString: RIO[R, String])(implicit ev: zio.Tag[Config]): RLayer[R, Config] = ZLayer {
     makeConfigString
       .flatMap(produceConfig)
   }
@@ -49,22 +49,22 @@ abstract class TestLayers[T](implicit tag: Tag[T]) {
   /**
     * Creates a [[zio.Layer]] with db config object from a [[zio.Layer]] that provides a db config string
     */
-  def makeConfigLayer[R](stringLayer: RLayer[R, String]): RLayer[R, T] = ZLayer {
+  def makeConfigLayer[R](stringLayer: RLayer[R, String])(implicit ev: zio.Tag[Config]): RLayer[R, Config] = ZLayer {
     ZIO.serviceWithZIO[String](produceConfig).provideSome[R](stringLayer)
   }
 
   /** Creates a [[zio.Layer]] with db config object for an in-memory database with random name */
-  val randomConfigLayer: TaskLayer[T] = makeConfigLayer(randomDbConfig)
+  def randomConfigLayer(implicit ev: zio.Tag[Config]): TaskLayer[Config] = makeConfigLayer(randomDbConfig)
 
   /**
     * Produces a [[Database]] from a db config object
     */
-  def makeDb(config: T): Task[Database]
+  def makeDb(config: Config): Task[Database]
 
   /** Creates a scoped [[ZIO]] of a [[Database]] from a db config object dependency */
-  val testDbManaged: RIO[T with Scope, Database] =
+  def testDbManaged(implicit ev: zio.Tag[Config]): RIO[Config with Scope, Database] =
     ZIO.acquireRelease {
-      ZIO.service[T].flatMap(makeDb)
+      ZIO.serviceWithZIO[Config](makeDb)
     } { db =>
       ZIO
         .attempt(db.close())
@@ -73,9 +73,10 @@ abstract class TestLayers[T](implicit tag: Tag[T]) {
     }
 
   /** Creates a [[zio.Layer]] of a [[Database]] from a db config object dependency */
-  val testDbLayerDep: RLayer[T, HasDb] = ZLayer.scoped[T](testDbManaged)
+  def testDbLayerDep(implicit ev: zio.Tag[Config]): RLayer[Config, HasDb] = ZLayer.scoped[Config](testDbManaged)
 
   /** Creates a [[zio.Layer]] of a [[Database]] with random name */
-  val testDbLayer: TaskLayer[HasDb] =
-    randomConfigLayer.to(testDbLayerDep)
+  def testDbLayer(implicit ev: zio.Tag[Config]): TaskLayer[HasDb] =
+    randomConfigLayer
+      .to(testDbLayerDep)
 }
