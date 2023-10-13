@@ -7,7 +7,7 @@ import slick.jdbc.JdbcBackend.Database
 import zio.ZIO.blocking
 import zio._
 
-import scala.annotation.tailrec
+import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.ExecutionContext
 import scala.math.Ordered.orderingToOrdered
 import scala.reflect.ClassTag
@@ -156,7 +156,7 @@ sealed abstract class DBZIO[-R, +T](private[DBZIO] val tag: ActionTag)(implicit 
     * Creates the [[ZIO]] effect that executes current 'DBZIO'.
     * @return [[ZIO]] with [[Database]] and `R` dependencies.
     */
-  def result(implicit trace: Trace): DbRIO[R, T] = DBZIO.result(this)
+  def result(implicit @nowarn trace: Trace): DbRIO[R, T] = DBZIO.result(this)
 
   /** Maps this `DBZIO` to a DBZIO of another value. */
   def as[A](a: => A)(implicit trace: Trace): DBZIO[R, A] = map(_ => a)

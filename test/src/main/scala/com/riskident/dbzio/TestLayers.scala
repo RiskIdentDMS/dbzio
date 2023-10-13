@@ -66,7 +66,10 @@ abstract class TestLayers[T](implicit tag: Tag[T]) {
     ZIO.acquireRelease {
       ZIO.service[T].flatMap(makeDb)
     } { db =>
-      ZIO.attempt(db.close()).catchAll { t => printLineError(s"Failed to close connections due to: $t") }.ignore
+      ZIO
+        .attempt(db.close())
+        .tapError(t => printLineError(s"Failed to close connections due to: $t"))
+        .ignore
     }
 
   /** Creates a [[zio.Layer]] of a [[Database]] from a db config object dependency */
