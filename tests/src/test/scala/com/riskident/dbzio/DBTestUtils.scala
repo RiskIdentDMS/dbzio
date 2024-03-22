@@ -1,16 +1,15 @@
 package com.riskident.dbzio
 
 import com.riskident.dbzio
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.ConfigFactory
 import slick.jdbc.H2Profile.api.{Database => _, _}
 import slick.jdbc.JdbcBackend.Database
 import slick.lifted.Tag
-import zio.blocking.{blocking, Blocking}
 import zio.test.TestFailure
-import zio.test.environment.TestEnvironment
 import zio.{Tag => _, _}
 
-object DBTestUtils extends dbzio.TestLayers[Config] {
+object DBTestUtils extends dbzio.TestLayers {
+  override type Config = com.typesafe.config.Config
 
   case class Data(id: Int, name: String)
 
@@ -71,11 +70,11 @@ object DBTestUtils extends dbzio.TestLayers[Config] {
 
   }
 
-  val dbLayer: RLayer[DbDependency, DbDependency] = ZLayer.fromManaged {
+  val dbLayer: RLayer[DbDependency, DbDependency] = ZLayer.scoped[DbDependency] {
     for {
-      db <- ZManaged.service[Database]
-      _ <- ZManaged.make {
-        blocking(Task.fromFuture { implicit ec =>
+      db <- ZIO.service[Database]
+      _ <- ZIO.acquireRelease {
+        ZIO.fromFuture { implicit ec =>
           db.run {
             for {
               exists <- DataDaoZio.createTableDBIO(ec)
@@ -83,20 +82,20 @@ object DBTestUtils extends dbzio.TestLayers[Config] {
               res    <- DataDaoZio.createTableDBIO(ec)
             } yield res
           }
-        })
-      } { _ => DataDaoZio.dropTable.provide(Has(db)).ignore }
-    } yield ()
-  } ++ ZLayer.identity[DbDependency]
+        }
+      } { _ => DataDaoZio.dropTable.ignore }
+    } yield db
+  }
 
-  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] =
-    ((testDbLayer ++ ZLayer.identity[Blocking]) >>> dbLayer).mapError(TestFailure.fail)
+  val testLayer: ZLayer[Any, TestFailure[Throwable], DbDependency] =
+    (testDbLayer >>> dbLayer).mapError(TestFailure.fail)
 
-  override def produceConfig(string: String): Task[Config] = Task {
+  override def produceConfig(string: String): Task[Config] = ZIO.attempt {
     ConfigFactory
       .parseString(string)
       .resolve()
   }
 
   override def makeDb(config: Config): Task[Database] =
-    Task(Db.forConfig(path = "db", config = config, classLoader = this.getClass.getClassLoader))
+    ZIO.attempt(Db.forConfig(path = "db", config = config, classLoader = this.getClass.getClassLoader))
 }

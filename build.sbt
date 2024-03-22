@@ -10,8 +10,6 @@ ThisBuild / organizationHomepage := Some(url("https://github.com/riskidentdms"))
 ThisBuild / description := "Monadic bridge between ZIO and DBIO"
 ThisBuild / licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0"))
 
-ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.6.0"
-
 ThisBuild / resolvers ++= Resolver.mavenLocal +: Resolver.sonatypeOssRepos("staging")
 
 lazy val dbzio = (project in file("dbzio")).withScalafix.withCommonSettings

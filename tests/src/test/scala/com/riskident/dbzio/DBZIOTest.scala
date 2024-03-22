@@ -3,44 +3,41 @@ package com.riskident.dbzio
 import com.riskident.dbzio.DBTestUtils._
 import com.riskident.dbzio.DBZIO.DBZIOException
 import slick.jdbc.H2Profile.api.{Database => _, _}
-import zio.clock.Clock
-import zio.duration._
-import zio.random.Random
 import zio.test.Assertion._
 import zio.test._
-import zio.test.environment.{TestClock, TestEnvironment}
 import zio.{Tag => _, _}
 
 import scala.annotation.tailrec
 
-object DBZIOTest extends DefaultRunnableSpec {
+object DBZIOTest extends ZIOSpecDefault {
+  type TestEnv   = TestEnvironment with Clock with Scope
+  type DbTestEnv = HasDb with TestEnv
+  type DbSpec    = Spec[DbTestEnv, Throwable]
 
-  override val aspects: List[TestAspect[Nothing, TestEnvironment, Nothing, Any]] =
+  override val aspects: Chunk[TestAspectAtLeastR[TestEnvironment]] =
     super.aspects :+ TestAspect.sequential
 
-  private def withAspects(s: ZSpec[TestEnv, Throwable]): ZSpec[TestEnv, Throwable] = {
+  private def withAspects(s: DbSpec): DbSpec = {
     aspects.foldLeft(s)(_ @@ _)
   }
 
-  lazy val genStr: URIO[Sized, String] = {
+  lazy val genStr: UIO[String] = {
     Gen
       .alphaNumericStringBounded(5, 10)
       .runHead
       .flatMap {
-        case Some(str) if str.nonEmpty && str(0).isLetter => UIO.succeed(str)
+        case Some(str) if str.nonEmpty && str(0).isLetter => ZIO.succeed(str)
         case _                                            => genStr
       }
-      .provideSomeLayer[Sized](Random.live)
+      .withRandom(Random.RandomLive)
   }
   val countDBIO: DBIO[Int]     = DataDaoZio.length.result
   val countFailDBIO: DBIO[Int] = FailedDaoZio.length.result
 
-  type TestEnv = TestEnvironment with HasDb
-
-  val testExec: ZSpec[TestEnv, Throwable] = withAspects(testM("execute mixed actions") {
+  val testExec: DbSpec = withAspects(test("execute mixed actions") {
     val timeout = 5.seconds
 
-    val insert: DbRIO[Clock with TestClock, (Int, Int)] = (for {
+    (for {
       d1 <- DataDaoZio.doInsert(Data(0, "foo"))
       _ <- DBZIO(for {
         fiber <- ZIO.sleep(timeout).fork
@@ -48,16 +45,12 @@ object DBZIOTest extends DefaultRunnableSpec {
         _     <- fiber.join
       } yield ())
       d2 <- DataDaoZio.doInsert(Data(0, "bar"))
-    } yield (d1.id, d2.id)).result
+    } yield assertTrue(d1.id != 0) && assertTrue(d2.id != 0)).result
 
-    for {
-      (id1, id2) <- insert
-    } yield assert(id1)(not(equalTo(0))) &&
-      assert(id2)(not(equalTo(0)))
   })
 
-  val testFailWithoutTx: ZSpec[TestEnv, Throwable] = withAspects(
-    testM("leave inconsistent data after fail without transaction") {
+  val testFailWithoutTx: DbSpec = withAspects(
+    test("leave inconsistent data after fail without transaction") {
       val insert: DbTask[Unit] = (for {
         d1 <- DataDaoZio.doInsert(Data(0, "foo"))
         _  <- DBZIO.fail(Ex())
@@ -65,9 +58,9 @@ object DBZIOTest extends DefaultRunnableSpec {
       } yield ()).result
 
       for {
-        ins <- assertM(insert.run)(fails(anything))
-        one <- assertM(DataDaoZio.count.result)(equalTo(1))
-      } yield ins && one
+        ins <- insert.exit
+        one <- DataDaoZio.count.result
+      } yield assert(ins)(fails(anything)) && assertTrue(one == 1)
     }
   )
 
@@ -76,9 +69,9 @@ object DBZIOTest extends DefaultRunnableSpec {
   val assertCauseIsEx: Assertion[Exit[Throwable, Any]] =
     failsCause(containsCause(Cause.fail(DBZIOException[Ex](Cause.fail(Ex())))))
 
-  val transaction: ZSpec[TestEnv, Throwable] = withAspects {
-    def testRollback[T](name: String, fail: DBAction[T]): ZSpec[TestEnv, Throwable] =
-      withAspects(testM(s"rollback when fail inside $name") {
+  val transaction: DbSpec = withAspects {
+    def testRollback[T](name: String, fail: DBAction[T]): DbSpec =
+      withAspects(test(s"rollback when fail inside $name") {
         val insert: DbTask[(Int, Int)] = (for {
           d1 <- DataDaoZio.doInsert(Data(0, "foo"))
           d2 <- DataDaoZio.doInsert(Data(0, "bar"))
@@ -86,9 +79,9 @@ object DBZIOTest extends DefaultRunnableSpec {
         } yield (d1.id, d2.id)).transactionally.result
 
         for {
-          ins  <- assertM(insert.run)(assertCauseIsEx)
-          zero <- assertM(DataDaoZio.count.result)(equalTo(0))
-        } yield zero && ins
+          ins  <- insert.exit
+          zero <- DataDaoZio.count.result
+        } yield assert(ins)(assertCauseIsEx) && assertTrue(zero == 0)
       })
 
     suite("transaction")(
@@ -101,20 +94,20 @@ object DBZIOTest extends DefaultRunnableSpec {
     )
   }
 
-  val session: ZSpec[TestEnv, Throwable] = {
+  val session: DbSpec = {
 
     def pinnedSession(
         name: String,
         f: DBZIO[Clock, Unit] => DBZIO[Clock, Unit],
         assertion: Assertion[Int]
-    ): ZSpec[TestEnv, Throwable] = testM(name) {
+    )(implicit trace: Trace): DbSpec = test(name) {
       val timeout = 30.seconds
 
       def createWriteAction(
           wait: Promise[Nothing, Unit],
           release: Promise[Nothing, Unit]
-      ): DBZIO[Clock, Unit] = {
-        val await: URIO[Clock, Unit] = wait.await.timeout(timeout * 2).unit
+      ): DBZIO[Any, Unit] = {
+        val await: UIO[Unit] = wait.await.timeout(timeout * 2).unit
         for {
           d <- DataDaoZio.doInsert(Data(0, "foo"))
           _ <- DBZIO(release.succeed(()))
@@ -155,25 +148,25 @@ object DBZIOTest extends DefaultRunnableSpec {
     FailedDaoZio.doInsert(Data(1, "foo")).unit,
     DBZIO(countFailDBIO).unit,
     DBZIO(ZIO.fail(new RuntimeException).unit),
-    DBZIO(UIO(countFailDBIO)).unit
+    DBZIO(ZIO.succeed(countFailDBIO)).unit
   )
 
-  val errorProc: ZSpec[TestEnv, Throwable] = withAspects(suite("Error processing")({
+  val errorProc: DbSpec = withAspects(suite("Error processing") {
 
     def testErrors[R](
         name: String,
-        mapError: DBAction[Unit] => DBZIO[R with DbDependency, Unit]
-    ): ZSpec[TestEnv with R, Throwable] =
-      testM(name) {
+        mapError: DBAction[Unit] => DBZIO[R with HasDb, Unit]
+    ): Spec[HasDb with R, Throwable] =
+      test(name) {
         val actions = ZIO.foreach {
           failedActions
             .map(mapError)
-            .map(_.result.run)
-        }(assertM(_)(assertCauseIsEx))
+            .map(_.result.exit)
+        }(_.map(assert(_)(assertCauseIsEx)))
         actions.map(_.reduceLeft(_ && _))
       }
 
-    val onError: ZSpec[TestEnv, Throwable] = testM("onError correctly works") {
+    val onError: DbSpec = test("onError correctly works") {
       def combine(ref: Ref[Boolean], action: DBAction[Unit]): DBAction[Unit] = {
         action.onError(_ => DBZIO(ref.set(true)))
       }
@@ -181,72 +174,69 @@ object DBZIOTest extends DefaultRunnableSpec {
       def prepare(action: DBAction[Unit]): DbUIO[TestResult] =
         for {
           ref <- Ref.make(false)
-          run <- assertM(combine(ref, action).result.run)(fails(isSubtype[Throwable](anything)))
-          res <- assertM(ref.get)(equalTo(true))
-        } yield res && run
+          run <- combine(ref, action).result.exit
+          res <- ref.get
+        } yield assertTrue(res) && assert(run)(fails(isSubtype[Throwable](anything)))
 
       ZIO
         .foreach(failedActions)(prepare)
         .map(_.reduceLeft(_ && _))
     }
 
-    Seq(
-      onError,
-      testErrors("map Throwable to another Throwable", _.mapError(_ => Ex())),
+    onError +
+      testErrors("map Throwable to another Throwable", _.mapError(_ => Ex())) +
       testErrors("flatMap Throwable to DBZIO[_, Throwable]", _.flatMapError(_ => DBZIO.success(Ex())))
-    )
-  }: _*))
+  })
 
-  val foldSuccess = Seq(
-    "PureZio"     -> DBZIO(UIO(0)),
+  private val foldSuccess = Seq(
+    "PureZio"     -> DBZIO(ZIO.succeed(0)),
     "PureDBIO"    -> DBZIO(countDBIO),
     "DBIOInZio"   -> DataDaoZio.load,
-    "ZioOverDBIO" -> DBZIO(UIO(countDBIO))
+    "ZioOverDBIO" -> DBZIO(ZIO.succeed(countDBIO))
   )
 
-  val foldFail = Seq(
+  private val foldFail = Seq(
     "PureZio"     -> DBZIO(ZIO.fail(Ex()).unit),
     "PureDBIO"    -> DBZIO(countFailDBIO),
     "DBIOInZio"   -> FailedDaoZio.doInsert(Data(0, "foo")),
-    "ZioOverDBIO" -> DBZIO(UIO(countFailDBIO))
+    "ZioOverDBIO" -> DBZIO(ZIO.succeed(countFailDBIO))
   )
 
-  val foldM: ZSpec[TestEnv, Throwable] = withAspects {
-    def testFoldM[T](prefix: String, expected: Boolean): (String, DBZIO[Any, T]) => ZSpec[TestEnv, Throwable] =
-      (name, action) =>
-        testM(s"$prefix $name to DBAction[Boolean]") {
-          assertM(action.foldM(_ => DBZIO.success(false), _ => DBZIO.success(true)).result)(equalTo(expected))
-        }
+  val foldM: DbSpec = withAspects {
+    def testFoldM[T](prefix: String, expected: Boolean)(name: String, action: DBZIO[Any, T])(
+        implicit trace: Trace
+    ): DbSpec =
+      test(s"$prefix $name to DBAction[Boolean]") {
+        action.foldM(_ => DBZIO.success(false), _ => DBZIO.success(true)).result.map { r => assertTrue(r == expected) }
+      }
 
-    val success = foldSuccess.map(testFoldM("successful", true).tupled)
-    val fail    = foldFail.map(testFoldM("failed", false).tupled)
+    val success = foldSuccess.map((testFoldM("successful", true) _).tupled)
+    val fail    = foldFail.map((testFoldM("failed", false) _).tupled)
 
     val pureValue = testFoldM("successful", true)("PureValue", DBZIO.success(()))
     val failure   = testFoldM("failed", false)("Failure", DBZIO.fail(new RuntimeException))
-    suite("FoldM DBZIO")(
-      (pureValue +: success) ++ (failure +: fail): _*
-    )
+    suite("FoldM DBZIO") {
+      ((pureValue +: success) ++ (failure +: fail)).reduceLeft(_ + _)
+    }
   }
 
-  val fold: ZSpec[TestEnv, Throwable] = withAspects {
-    def testFold[T](prefix: String, expected: Boolean): (String, DBZIO[Any, T]) => ZSpec[TestEnv, Throwable] =
+  val fold: DbSpec = withAspects {
+    def testFold[T](prefix: String, expected: Boolean): (String, DBZIO[Any, T]) => DbSpec =
       (name, action) =>
-        testM(s"$prefix $name to DBAction[Boolean]") {
-          assertM(action.fold(_ => false, _ => true).result)(equalTo(expected))
+        test(s"$prefix $name to DBAction[Boolean]") {
+          action.fold(_ => false, _ => true).result.map(r => assertTrue(r == expected))
         }
 
-    val success: Seq[ZSpec[TestEnv, Throwable]] = foldSuccess.map(testFold("successful", true).tupled)
-    val fail                                    = foldFail.map(testFold("failed", false).tupled)
+    val success = foldSuccess.map(testFold("successful", true).tupled).reduceLeft(_ + _)
+    val fail    = foldFail.map(testFold("failed", false).tupled).reduceLeft(_ + _)
 
-    suite("Fold DBZIO")(
-      (success ++ fail): _*
-    )
+    suite("Fold DBZIO")(success + fail)
   }
 
-  val collection: ZSpec[TestEnv, Throwable] = withAspects(
+  val collection: DbSpec = withAspects(
     suite("collectAll")(
       suite("collection")(
-        testM("List[DBAction[Data]]") {
+        test("List[DBAction[Data]]") {
           val count = 100
           DBZIO
             .collectAll {
@@ -254,13 +244,13 @@ object DBZIOTest extends DefaultRunnableSpec {
                 for {
                   name <- DBZIO(genStr)
                   data <- DataDaoZio.doInsert(Data(0, name))
-                } yield assert(data.id)(isGreaterThan(0))
+                } yield assertTrue(data.id > 0)
               }
             }
             .result
             .map(_.reduceLeft(_ && _))
         },
-        testM("List[DBAction[Option[Data]]") {
+        test("List[DBAction[Option[Data]]") {
           val count = 100
           for {
             names <- ZIO.foreach((0 to count).toList)(_ => genStr)
@@ -268,42 +258,43 @@ object DBZIOTest extends DefaultRunnableSpec {
           } yield assertCompletes
         }
       ),
-      testM("Option[DBZIO[_, _]]") {
+      test("Option[DBZIO[_, _]]") {
         for {
           name <- genStr
           _    <- DBZIO.collectAll(None.map(_ => DataDaoZio.doInsert(Data(0, name)))).result
-          a1   <- assertM(DataDaoZio.load.result)(isEmpty)
+          a1   <- DataDaoZio.load.result
           _    <- DBZIO.collectAll(Some(1).map(_ => DataDaoZio.doInsert(Data(0, name)))).result
-          a2   <- assertM(DataDaoZio.load.result)(not(isEmpty))
-        } yield a1 && a2
+          a2   <- DataDaoZio.load.result
+        } yield assertTrue(a1.isEmpty) && assertTrue(a2.nonEmpty)
       }
     )
   )
 
-  val dbzioIf: ZSpec[TestEnv, Throwable] = withAspects(
+  val dbzioIf: DbSpec = withAspects(
     suite("DBZIO.if*")(
-      testM("ifF") {
+      test("ifF") {
         (for {
           _  <- DBZIO.ifF(false, onTrue = DataDaoZio.doInsert(Data(0, "foo")).unit, onFalse = DBZIO.unit)
-          a1 <- DBZIO(assertM(DataDaoZio.load.result)(isEmpty))
+          a1 <- DataDaoZio.load
           _  <- DBZIO.ifF(true, onTrue = DataDaoZio.doInsert(Data(0, "foo")).unit, onFalse = DBZIO.unit)
-          a2 <- DBZIO(assertM(DataDaoZio.load.result)(not(isEmpty)))
-        } yield a1 && a2).result
+          a2 <- DataDaoZio.load
+        } yield assertTrue(a1.isEmpty) && assertTrue(a2.nonEmpty)).result
       },
-      testM("ifM") {
+      test("ifM") {
         (for {
           _  <- DBZIO.ifM(DBZIO.success(false), onTrue = DataDaoZio.doInsert(Data(0, "foo")).unit, onFalse = DBZIO.unit)
-          a1 <- DBZIO(assertM(DataDaoZio.load.result)(isEmpty))
+          a1 <- DataDaoZio.load
           _  <- DBZIO.ifM(DBZIO.success(true), onTrue = DataDaoZio.doInsert(Data(0, "foo")).unit, onFalse = DBZIO.unit)
-          a2 <- DBZIO(assertM(DataDaoZio.load.result)(not(isEmpty)))
-        } yield a1 && a2).result
+          a2 <- DataDaoZio.load
+        } yield assertTrue(a1.isEmpty) && assertTrue(a2.nonEmpty)).result
       }
     )
   )
 
-  val nested: ZSpec[TestEnv, Throwable] = withAspects {
+  val nested: DbSpec = withAspects {
     val count = 1000
-    testM(s"Nested (dbio > zio > dbio > zio... $count times)") {
+    test(s"Nested (dbio > zio > dbio > zio... $count times)") {
+      @tailrec
       def recur(cnt: Int, ref: Ref[Int], action: DBAction[Int]): DBAction[Int] = {
         if (cnt <= 0) {
           action
@@ -314,29 +305,29 @@ object DBZIOTest extends DefaultRunnableSpec {
       for {
         ref <- Ref.make(0)
         action = recur(count, ref, DBZIO.success(0))
-        a1 <- assertM(action.result)(equalTo(count))
-        a2 <- assertM(ref.get)(equalTo(count))
-      } yield a1 && a2
+        a1 <- action.result
+        a2 <- ref.get
+      } yield assertTrue(a1 == count) && assertTrue(a2 == count)
     }
   }
 
-  val combined: ZSpec[TestEnv, Throwable] = withAspects(testM("combined for-comprehension") {
+  val combined: DbSpec = withAspects(test("combined for-comprehension") {
     val action = for {
       name          <- DBZIO(genStr)
       data          <- DataDaoZio.doInsert(Data(0, name))
       loaded        <- DBZIO(DataDaoZio.loadById(data.id))
-      loadedFromZio <- DBZIO(UIO.unit.as(DataDaoZio.loadById(data.id)))
+      loadedFromZio <- DBZIO(ZIO.succeed(DataDaoZio.loadById(data.id)))
       newName = data.name
       finalLoaded <- DataDaoZio.load
-    } yield assert(finalLoaded)(not(isEmpty)) &&
-      assert(data.id)(not(equalTo(0))) &&
-      assert(newName)(equalTo(name)) &&
-      assert(loaded)(equalTo(loadedFromZio))
+    } yield assertTrue(finalLoaded.nonEmpty) &&
+      assertTrue(data.id != 0) &&
+      assertTrue(newName == name) &&
+      assertTrue(loaded == loadedFromZio)
 
     action.result
   })
 
-  val stackSafeResult: ZSpec[TestEnv, Throwable] = withAspects {
+  val stackSafeResult: DbSpec = withAspects {
     @tailrec
     def chain(next: DBZIO[Any, Int], action: DBZIO[Any, Int], left: Int): DBZIO[Any, Int] = {
       if (left == 0) action
@@ -344,15 +335,15 @@ object DBZIOTest extends DefaultRunnableSpec {
     }
 
     val cases: Seq[(DBZIO[Any, Int], String)] = Seq(
-      DataDaoZio.count                     -> "DBIO",
-      DBZIO(UIO(0))                        -> "ZIO",
-      DBZIO.success(0)                     -> "pure values",
-      DBZIO(UIO(DataDaoZio.length.result)) -> "ZIO over DBIO"
+      DataDaoZio.count                             -> "DBIO",
+      DBZIO(ZIO.succeed(0))                        -> "ZIO",
+      DBZIO.success(0)                             -> "pure values",
+      DBZIO(ZIO.succeed(DataDaoZio.length.result)) -> "ZIO over DBIO"
     )
 
     val tests = cases.map {
       case (action, name) =>
-        testM(s"chain of $name") {
+        test(s"chain of $name") {
           chain(action, action, 16384).result.as(assertCompletes)
         }
     }
@@ -360,39 +351,36 @@ object DBZIOTest extends DefaultRunnableSpec {
     withAspects(suite("Computing result is stack-safe")(tests: _*))
   }
 
-  val zip = testM("zip") {
+  val zip: DbSpec = test("zip") {
     (for {
-      p1                     <- DBZIO(Promise.make[Any, Unit])
-      p2                     <- DBZIO(Promise.make[Any, Unit])
-      result                 <- DBZIO(p1.succeed(())).map(_ => 1) <*> DBZIO(p2.succeed(())).map(_ => 2)
-      bothEffectsAreExecuted <- DBZIO(assertM(p1.isDone && p2.isDone)(isTrue))
-      correctCombinedResult  <- DBZIO.success(assertTrue(result == (1 -> 2)))
-    } yield bothEffectsAreExecuted && correctCombinedResult).result
+      p1      <- DBZIO(Promise.make[Any, Unit])
+      p2      <- DBZIO(Promise.make[Any, Unit])
+      result  <- DBZIO(p1.succeed(())).map(_ => 1) <*> DBZIO(p2.succeed(())).map(_ => 2)
+      allDone <- DBZIO(p1.isDone) <*> DBZIO(p2.isDone)
+    } yield assertTrue(allDone._1 && allDone._2) && assertTrue(result == (1 -> 2))).result
   }
 
-  val zipRight = testM("zipRight") {
+  val zipRight: DbSpec = test("zipRight") {
     (for {
-      p1                     <- DBZIO(Promise.make[Any, Unit])
-      p2                     <- DBZIO(Promise.make[Any, Unit])
-      result                 <- DBZIO(p1.succeed(())).map(_ => 1) *> DBZIO(p2.succeed(())).map(_ => 2)
-      bothEffectsAreExecuted <- DBZIO(assertM(p1.isDone && p2.isDone)(isTrue))
-      correctRightResult     <- DBZIO.success(assertTrue(result == 2))
-    } yield bothEffectsAreExecuted && correctRightResult).result
+      p1      <- DBZIO(Promise.make[Any, Unit])
+      p2      <- DBZIO(Promise.make[Any, Unit])
+      result  <- DBZIO(p1.succeed(())).map(_ => 1) *> DBZIO(p2.succeed(())).map(_ => 2)
+      allDone <- DBZIO(p1.isDone) <*> DBZIO(p2.isDone)
+    } yield assertTrue(allDone._1 && allDone._2) && assertTrue(result == 2)).result
   }
 
-  val zipLeft = testM("zipLeft") {
+  val zipLeft: DbSpec = test("zipLeft") {
     (for {
-      p1                     <- DBZIO(Promise.make[Any, Unit])
-      p2                     <- DBZIO(Promise.make[Any, Unit])
-      result                 <- DBZIO(p1.succeed(())).map(_ => 1) <* DBZIO(p2.succeed(())).map(_ => 2)
-      bothEffectsAreExecuted <- DBZIO(assertM(p1.isDone && p2.isDone)(isTrue))
-      correctLeftResult      <- DBZIO.success(assertTrue(result == 1))
-    } yield bothEffectsAreExecuted && correctLeftResult).result
+      p1      <- DBZIO(Promise.make[Any, Unit])
+      p2      <- DBZIO(Promise.make[Any, Unit])
+      result  <- DBZIO(p1.succeed(())).map(_ => 1) <* DBZIO(p2.succeed(())).map(_ => 2)
+      allDone <- DBZIO(p1.isDone) <*> DBZIO(p2.isDone)
+    } yield assertTrue(allDone._1 && allDone._2) && assertTrue(result == 1)).result
   }
 
-  val zipSuite = suite("All zips")(zip, zipRight, zipLeft)
+  val zipSuite: DbSpec = suite("All zips")(zip, zipRight, zipLeft)
 
-  override def spec: ZSpec[TestEnvironment, Any] =
+  override def spec: Spec[TestEnvironment with Scope, Any] =
     withAspects {
       suite("DBZIO")(
         Seq(
@@ -410,5 +398,5 @@ object DBZIOTest extends DefaultRunnableSpec {
           stackSafeResult
         ).map(_ @@ TestAspect.timeout(30.seconds)): _*
       )
-    }.provideCustomLayer(testLayer) @@ TestAspect.timed
+    }.provideSomeLayer[TestEnvironment with Scope](testLayer ++ TestClock.default) @@ TestAspect.timed
 }

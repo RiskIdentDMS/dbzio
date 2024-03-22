@@ -6,14 +6,9 @@ import com.riskident.dbzio.DBTestUtils.Data
 import org.scalacheck.rng.Seed
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import slick.dbio.DBIO
-import zio.blocking.Blocking
-import zio.console.Console
-import zio.random.Random
-import zio.{TaskLayer, UIO, ULayer}
+import zio.{TaskLayer, Unsafe, ZIO}
 
 trait LowPrioImplicits {
-
-  import DBTestUtils.testDbLayer
 
   implicit val monad: Monad[DBAction] = new Monad[DBAction] {
     override def flatMap[A, B](fa: DBAction[A])(f: A => DBAction[B]): DBAction[B] = fa.flatMap(f)
@@ -31,27 +26,27 @@ trait LowPrioImplicits {
   implicit def arbDBAction[A: Arbitrary]: Arbitrary[DBAction[A]] =
     Arbitrary(
       Gen.oneOf(
-        Arbitrary.arbitrary[A].map(a => DBZIO(UIO(a))),
+        Arbitrary.arbitrary[A].map(a => DBZIO(ZIO.succeed(a))),
         Arbitrary.arbitrary[A].map(a => DBZIO(DBIO.successful(a))),
         Arbitrary.arbitrary[A].map(a => DBZIO(implicit ec => DBIO.successful(()).map(_ => a))),
-        Arbitrary.arbitrary[A].map(a => DBZIO(UIO(DBIO.successful(a))))
+        Arbitrary.arbitrary[A].map(a => DBZIO(ZIO.succeed(DBIO.successful(a))))
       )
     )
 
-  implicit val eqData: Eq[Data] = _ == _
-  private val layer: TaskLayer[DbDependency] = {
-    val env: ULayer[Random with Console]                       = Random.live ++ zio.console.Console.live
-    val testLayer: TaskLayer[HasDb with Blocking with Console] = env >+> testDbLayer ++ Blocking.live
-    testLayer >>> DBTestUtils.dbLayer
-  }
+  implicit val eqData: Eq[Data]              = _ == _
+  private val layer: TaskLayer[DbDependency] = DBTestUtils.testDbLayer
   implicit def eqDBAction[A]: Eq[DBAction[A]] =
     (x: DBAction[A], y: DBAction[A]) =>
-      zio.Runtime.default.unsafeRun {
-        (for {
-          a <- x
-          b <- y
-        } yield a == b).result
-          .provideLayer(layer)
+      Unsafe.unsafe { implicit u =>
+        zio.Runtime.default.unsafe
+          .run {
+            (for {
+              a <- x
+              b <- y
+            } yield a == b).result
+              .provideLayer(layer)
+          }
+          .getOrThrow()
       }
 
   implicit val cogenData: Cogen[Data] = Cogen((seed, t) => Seed.random())
