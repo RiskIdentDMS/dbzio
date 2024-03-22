@@ -63,34 +63,30 @@ libraryDependencies += "com.riskident" %% "dbzio-test" % <Version> % Test
 And in tests add the following:
 
 ```scala
-import com.riskident.dbzio
-import com.typesafe.config.{Config, ConfigFactory}
-import slick.jdbc.H2Profile.api.{Database => _, _}
+import com.riskident.dbzio.{Db, DbDependency, TestLayers}
+import com.typesafe.config.ConfigFactory
+import slick.jdbc.H2Profile.api.{Database => _}
 import slick.jdbc.JdbcBackend.Database
-import zio.{Tag => _, _}
 import zio.test._
-import zio.blocking.Blocking
-import zio.console.Console
-import zio.test.TestFailure
-import zio.test.environment.TestEnvironment
+import zio.{Task, ZIO, ZLayer}
 
-object SomeTest extends DefaultRunnableSpec with TestLayers[Config] {
-  override def produceConfig(string: String): Task[Config] = Task {
+object Example1 extends ZIOSpecDefault with TestLayers {
+  override type Config = com.typesafe.config.Config
+
+  override def produceConfig(string: String): Task[Config] = ZIO.attempt {
     ConfigFactory
       .parseString(string)
       .resolve()
   }
 
   override def makeDb(config: Config): Task[Database] =
-    Task(Db.forConfig(path = "db", config = config, classLoader = this.getClass.getClassLoader))
+    ZIO.attempt(Db.forConfig(path = "db", config = config, classLoader = this.getClass.getClassLoader))
 
+  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] = testDbLayer.mapError(TestFailure.fail)
 
-  val testLayer: ZLayer[TestEnvironment, TestFailure[Throwable], DbDependency] =
-    (testDbLayer ++ ZLayer.identity[Blocking] ++ ZLayer.identity[Console]).mapError(TestFailure.fail)
-
-  override def spec: ZSpec[TestEnvironment, Any] = suite("Some tests using db")(...).provideCustomLayer(testLayer)
+  override def spec: Spec[TestEnvironment, Any] =
+    suite("Some tests using db")(...).provideLayer(testLayer)
 }
-
 ```
 
 This will allow to use [H2](https://www.h2database.com/html/main.html) in-memory database with random name in each test,

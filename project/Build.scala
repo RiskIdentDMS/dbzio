@@ -6,17 +6,17 @@ import scalafix.sbt.ScalafixPlugin.autoImport._
 object Build {
 
   lazy val Version = new {
-    val h2             = "2.1.210"
-    val slf4j          = "1.7.36"
-    val zio            = "2.0.2"
-    val cats           = "2.7.0"
-    val scalaCheck     = "1.15.4"
+    val h2             = "2.2.224"
+    val slf4j          = "2.0.12"
+    val zio            = "2.0.21"
+    val cats           = "2.10.0"
+    val scalaCheck     = "1.17.0"
     val slick          = "3.4.1"
     val shapeless      = "2.3.10"
     val shapelessCheck = "1.3.0"
 
-    lazy val scala213 = List("2.13.10", "2.13.9")
-    lazy val scala212 = List("2.12.15", "2.12.16", "2.12.17")
+    lazy val scala213 = List("2.13.10", "2.13.9", "2.13.13")
+    lazy val scala212 = List("2.12.15", "2.12.16", "2.12.17", "2.12.18")
   }
 
   lazy val supportedScalaVersions = Version.scala213 ++ Version.scala212
