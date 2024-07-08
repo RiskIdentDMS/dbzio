@@ -1,3 +1,16 @@
+# Repository Archived
+
+This repository has been archived and is now read-only.
+
+## Reason for Archiving
+
+This project will no longer be maintained and new versions will no longer be published.
+
+## Important Notes
+
+- The code and all issues, pull requests, and discussions are still accessible in a read-only state.
+- No further updates, bug fixes, or support will be provided.
+
 # DBZIO
 DBZIO is a wrapper to combine ZIO and DBIO actions in one for-comprehension. Unlike other libraries,
 DBZIO provides possibility to run the resulting action in a context of database transaction.
